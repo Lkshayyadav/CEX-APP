@@ -42,3 +42,6 @@ yarn-error.*
 
 # Local study notes & internal phases
 Phases/
+
+.claude/
+.agents/
