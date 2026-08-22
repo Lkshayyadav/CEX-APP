@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -16,51 +16,49 @@ import { Card } from "../../src/components/common/Card";
 import { Button } from "../../src/components/common/Button";
 import { CoinAvatar } from "../../src/components/common/CoinAvatar";
 import { DepositModal } from "../../src/components/wallet/DepositModal";
+import { AuthRequiredGate } from "../../src/components/common/AuthRequiredGate";
 import { useAuthStore } from "../../src/store/authStore";
 import { useBalanceStore } from "../../src/store/balanceStore";
 import { formatCurrency, formatAmount } from "../../src/utils/formatters";
-import { Plus, Lock, CheckCircle2 } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
+import { ShieldCheck,
+  Eye,
+  EyeOff, Plus, Lock, ArrowDownLeft, ArrowRightLeft } from "lucide-react-native";
 
 const SUPPORTED_LEDGER_ASSETS = [
+  { symbol: "BTC", name: "Bitcoin", rate: 65000 },
+  { symbol: "ETH", name: "Ethereum", rate: 3500 },
+  { symbol: "SOL", name: "Solana", rate: 145 },
   { symbol: "USDT", name: "Tether USD", rate: 1.0 },
-  { symbol: "BTC", name: "Bitcoin", rate: 50000.0 },
-  { symbol: "ETH", name: "Ethereum", rate: 3845.2 },
-  { symbol: "SOL", name: "Solana", rate: 186.75 },
 ];
 
-export default function WalletTabScreen() {
+export default function WalletScreen() {
   const router = useRouter();
   const { isAuthenticated, isDemoMode } = useAuthStore();
   const { balances, totalPortfolioUsd, isLoading, fetchBalances } = useBalanceStore();
 
   const [depositModalVisible, setDepositModalVisible] = useState(false);
+  const [isBalanceHidden, setIsBalanceHidden] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchBalances();
-    }
-  }, [isAuthenticated]);
+    fetchBalances();
+  }, []);
 
   const onRefresh = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
     setIsRefreshing(true);
-    if (isAuthenticated) {
-      await fetchBalances();
-    }
+    await fetchBalances();
     setIsRefreshing(false);
   };
 
-  const displayTotal =
-    isAuthenticated
-      ? formatCurrency(totalPortfolioUsd, 2)
-      : isDemoMode
-      ? "38,763.60"
-      : "0.00";
-
-  const [wholePart, decimalPart] = displayTotal.split(".");
+  const totalValNum = totalPortfolioUsd || (isDemoMode ? 10000.0 : 0);
+  const [wholePart, decimalPart] = totalValNum.toFixed(2).split(".");
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
@@ -73,17 +71,19 @@ export default function WalletTabScreen() {
           />
         }
       >
+        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Asset Wallet</Text>
-          <Text style={styles.subtitle}>Double entry balance ledger verified & synchronized</Text>
+          <Text style={styles.title}>Asset Portfolio</Text>
+          <Text style={styles.subtitle}>On-chain ledger balances & wallet reserves</Text>
         </View>
 
+        {/* Executive Portfolio Balance Card */}
         <Card style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
-            <Text style={styles.balanceLabel}>ESTIMATED PORTFOLIO NET WORTH</Text>
+            <Text style={styles.balanceLabel}>TOTAL ESTIMATED VALUE</Text>
             <View style={styles.securityPill}>
-              <CheckCircle2 color={COLORS.buyGreen} size={12} />
-              <Text style={styles.securityText}>Synchronized</Text>
+              <ShieldCheck color={COLORS.buyGreen} size={13} />
+              <Text style={styles.securityText}>LEDGER SYNCHRONIZED</Text>
             </View>
           </View>
 
@@ -91,19 +91,16 @@ export default function WalletTabScreen() {
             <Text style={styles.currencySign}>$</Text>
             <Text style={styles.balanceWhole}>{wholePart}</Text>
             <Text style={styles.balanceDecimals}>.{decimalPart || "00"}</Text>
-            <Text style={styles.usdtEquiv}>USDT EQUIVALENT</Text>
+            <Text style={styles.usdtEquiv}>USD</Text>
           </View>
 
-          <Text style={styles.ledgerStatusText}>
-            ● Double entry balance ledger verified & synchronized
-          </Text>
-
+          {/* Action Buttons Matrix */}
           <View style={styles.actionButtonsRow}>
             <Button
               title="+ Deposit Funds"
               size="md"
               variant="primary"
-              style={{ flex: 1, backgroundColor: "#F97316" }}
+              style={{ flex: 1 }}
               onPress={() => {
                 if (!isAuthenticated && !isDemoMode) {
                   router.push("/(auth)/login");
@@ -113,43 +110,32 @@ export default function WalletTabScreen() {
               }}
             />
             <Button
-              title="Withdraw Funds"
+              title="Instant Swap →"
               size="md"
               variant="outline"
               style={{ flex: 1 }}
-              onPress={() => {
-                Alert.alert("Withdraw Notice", "Testnet withdrawals are locked. Assets are stored securely in simulation vault.");
-              }}
+              onPress={() => router.push("/(tabs)/swap")}
             />
           </View>
         </Card>
 
         {!isAuthenticated && !isDemoMode ? (
-          <Card elevated style={styles.authNoticeCard}>
-            <View style={styles.noticeIconBox}>
-              <Lock color={COLORS.electricBlueBright} size={20} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Sign in to view your live wallet</Text>
-              <Text style={styles.noticeSub}>Deposit testnet funds & track asset ledger</Text>
-            </View>
-            <Button
-              title="Sign In"
-              size="sm"
-              variant="primary"
-              onPress={() => router.push("/(auth)/login")}
-            />
-          </Card>
+          <AuthRequiredGate
+            title="Sign In to Access Ledger"
+            description="Sign in or register an account to view your real cryptocurrency balances, deposit testnet funds, and manage assets."
+          />
         ) : null}
 
+        {/* Section Header */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Asset Ledger Balances</Text>
+          <Text style={styles.sectionTitle}>Asset Balances</Text>
           {isLoading ? <ActivityIndicator color={COLORS.electricBlue} size="small" /> : null}
         </View>
 
+        {/* Real Asset Ledger Cards */}
         <View style={styles.assetsList}>
           {SUPPORTED_LEDGER_ASSETS.map((asset) => {
-            const userBal = balances.find((b) => b.asset?.symbol === asset.symbol);
+            const userBal = balances.find((b) => b.asset?.symbol?.toUpperCase() === asset.symbol);
             const freeNum = userBal ? parseFloat(userBal.free) : 0;
             const lockedNum = userBal ? parseFloat(userBal.locked) : 0;
             const totalNum = freeNum + lockedNum;
@@ -169,7 +155,7 @@ export default function WalletTabScreen() {
                       {formatAmount(totalNum.toString(), 4)} {asset.symbol}
                     </Text>
                     <Text style={styles.assetUsdValue}>
-                      ≈ ${`${formatCurrency(usdValue.toFixed(2))}`}
+                      ≈ ${formatCurrency(usdValue.toFixed(2))}
                     </Text>
                   </View>
                 </View>
@@ -179,7 +165,7 @@ export default function WalletTabScreen() {
                     Available: <Text style={{ color: COLORS.buyGreen, fontWeight: "700" }}>{formatAmount(freeNum.toString(), 4)}</Text>
                   </Text>
                   <Text style={styles.breakdownText}>
-                    Locked: <Text style={{ color: COLORS.textPrimary, fontWeight: "700" }}>{formatAmount(lockedNum.toString(), 4)}</Text>
+                    Locked in Orders: <Text style={{ color: COLORS.textPrimary, fontWeight: "700" }}>{formatAmount(lockedNum.toString(), 4)}</Text>
                   </Text>
                 </View>
               </Card>
@@ -222,7 +208,8 @@ const styles = StyleSheet.create({
   balanceCard: {
     padding: SPACING.lg,
     backgroundColor: COLORS.surface,
-    borderColor: COLORS.borderBlue,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 22,
     gap: SPACING.md,
   },
   balanceHeader: {
@@ -240,7 +227,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(14, 203, 129, 0.12)",
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
@@ -261,7 +248,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   balanceWhole: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: "900",
     color: COLORS.textPrimary,
     letterSpacing: -0.5,
@@ -272,15 +259,10 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   usdtEquiv: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: "800",
     color: COLORS.textMuted,
     marginLeft: 6,
-  },
-  ledgerStatusText: {
-    fontSize: 11,
-    color: COLORS.buyGreen,
-    fontWeight: "600",
   },
   actionButtonsRow: {
     flexDirection: "row",
@@ -294,6 +276,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     backgroundColor: COLORS.surfaceElevated,
     borderColor: COLORS.borderBlue,
+    borderRadius: 18,
   },
   noticeIconBox: {
     width: 36,
@@ -327,8 +310,10 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   assetCard: {
-    padding: SPACING.md,
+    padding: SPACING.md + 2,
     backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    borderColor: "rgba(255, 255, 255, 0.08)",
     gap: SPACING.sm,
   },
   assetRow: {
@@ -361,8 +346,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     backgroundColor: COLORS.surfaceElevated,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: 6,
+    paddingHorizontal: SPACING.sm + 4,
+    paddingVertical: 7,
     borderRadius: RADIUS.md,
     marginTop: 2,
   },

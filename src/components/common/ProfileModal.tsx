@@ -2,8 +2,8 @@ import React from "react";
 import { View, Text, StyleSheet, Modal, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { COLORS, RADIUS, SPACING } from "../../constants/theme";
-import { Button } from "./Button";
 import { Card } from "./Card";
+import { Button } from "./Button";
 import { useAuthStore } from "../../store/authStore";
 import { User, Shield, Key, LogOut, X, CheckCircle2, LogIn, Sparkles } from "lucide-react-native";
 
@@ -19,6 +19,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
   const handleLogoutOrExitDemo = async () => {
     await logout();
     onClose();
+    router.replace("/welcome");
   };
 
   const handleGoToLogin = () => {
@@ -42,7 +43,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
           <Card style={styles.profileCard}>
             <View style={styles.avatarLarge}>
               <User
-                color={isAuthenticated ? COLORS.buyGreen : isDemoMode ? COLORS.electricBlueBright : COLORS.textMuted}
+                color={isAuthenticated ? COLORS.buyGreen : isDemoMode ? COLORS.electricBlue : COLORS.textMuted}
                 size={32}
               />
             </View>
@@ -61,26 +62,26 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
                 styles.statusBadge,
                 {
                   backgroundColor: isAuthenticated
-                    ? "rgba(14, 203, 129, 0.12)"
+                    ? "rgba(16, 185, 129, 0.12)"
                     : isDemoMode
-                    ? "rgba(59, 130, 246, 0.14)"
-                    : "rgba(100, 116, 139, 0.16)",
+                    ? "rgba(37, 99, 235, 0.10)"
+                    : "rgba(100, 116, 139, 0.12)",
                 },
               ]}
             >
               <CheckCircle2
-                color={isAuthenticated ? COLORS.buyGreen : isDemoMode ? COLORS.electricBlueBright : COLORS.textMuted}
+                color={isAuthenticated ? COLORS.buyGreen : isDemoMode ? COLORS.electricBlue : COLORS.textMuted}
                 size={14}
               />
               <Text
                 style={[
                   styles.statusBadgeText,
                   {
-                    color: isAuthenticated ? COLORS.buyGreen : isDemoMode ? COLORS.electricBlueBright : COLORS.textMuted,
+                    color: isAuthenticated ? COLORS.buyGreen : isDemoMode ? COLORS.electricBlue : COLORS.textMuted,
                   },
                 ]}
               >
-                {isAuthenticated ? "Live PostgreSQL Account" : isDemoMode ? "Simulated Demo Mode" : "Guest Mode"}
+                {isAuthenticated ? "Live Production Account" : isDemoMode ? "Simulated Demo Mode" : "Guest Mode"}
               </Text>
             </View>
           </Card>
@@ -90,7 +91,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
             <View style={styles.detailsList}>
               <View style={styles.detailRow}>
                 <View style={styles.detailLeft}>
-                  <Shield color={COLORS.electricBlueBright} size={16} />
+                  <Shield color={COLORS.electricBlue} size={16} />
                   <Text style={styles.detailKey}>Account Role</Text>
                 </View>
                 <Text style={styles.detailVal}>{user.role || "TRADER"}</Text>
@@ -98,7 +99,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
 
               <View style={styles.detailRow}>
                 <View style={styles.detailLeft}>
-                  <Key color={COLORS.electricBlueBright} size={16} />
+                  <Key color={COLORS.electricBlue} size={16} />
                   <Text style={styles.detailKey}>Account ID</Text>
                 </View>
                 <Text style={styles.detailVal}>{user.id ? user.id.slice(0, 12) + "..." : "---"}</Text>
@@ -149,7 +150,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
                 title="Try Demo Account ($25,000)"
                 variant="outline"
                 size="lg"
-                icon={<Sparkles color={COLORS.electricBlueBright} size={18} />}
+                icon={<Sparkles color={COLORS.electricBlue} size={18} />}
                 onPress={() => {
                   enterDemoMode();
                   onClose();
@@ -166,15 +167,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "flex-end",
   },
   modalContainer: {
-    backgroundColor: "#111728",
+    backgroundColor: "#FFFFFF",
     borderTopLeftRadius: RADIUS.xxl,
     borderTopRightRadius: RADIUS.xxl,
     borderWidth: 1,
-    borderColor: COLORS.borderBlue,
+    borderColor: "rgba(0, 0, 0, 0.08)",
     padding: SPACING.xl,
     paddingBottom: 40,
     gap: SPACING.lg,
@@ -193,26 +194,33 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
   },
   profileCard: {
     alignItems: "center",
     padding: SPACING.xl,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
+    borderRadius: RADIUS.xl,
+    borderColor: "rgba(0, 0, 0, 0.06)",
     gap: SPACING.sm,
   },
   avatarLarge: {
     width: 64,
     height: 64,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: "#FFFFFF",
     borderWidth: 2,
-    borderColor: COLORS.borderBlue,
+    borderColor: "rgba(0, 0, 0, 0.08)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   usernameText: {
     fontSize: 18,
@@ -237,10 +245,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   detailsList: {
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     gap: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.05)",
   },
   detailRow: {
     flexDirection: "row",

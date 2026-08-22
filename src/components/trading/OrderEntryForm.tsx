@@ -1,25 +1,25 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
-import { COLORS, RADIUS, SPACING, SHADOWS } from "../../constants/theme";
-import { Button } from "../common/Button";
+import { COLORS, RADIUS, SPACING } from "../../constants/theme";
 import { Card } from "../common/Card";
+import { Button } from "../common/Button";
 import { OrderSide, OrderType } from "../../types";
-import { useOrderStore } from "../../store/orderStore";
 import { useAuthStore } from "../../store/authStore";
-import { useWebSocketStream } from "../../hooks/useWebSocket";
-import { formatCurrency } from "../../utils/formatters";
-import { useRouter } from "expo-router";
-import { ArrowRight, CheckCircle2, AlertCircle, Zap } from "lucide-react-native";
+import { useOrderStore } from "../../store/orderStore";
+import { useBalanceStore } from "../../store/balanceStore";
+import { formatCurrency, formatAmount } from "../../utils/formatters";
+import * as Haptics from "expo-haptics";
+import { CheckCircle2, AlertCircle, Wallet } from "lucide-react-native";
 
 interface OrderEntryFormProps {
-  symbol: string; // e.g. "BTC/USDT"
+  symbol: string;
   defaultPrice?: string;
   onSuccess?: () => void;
 }
@@ -29,124 +29,136 @@ export const OrderEntryForm: React.FC<OrderEntryFormProps> = ({
   defaultPrice = "50000",
   onSuccess,
 }) => {
-  const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isDemoMode } = useAuthStore();
   const { placeOrder, isSubmitting, error, successMessage, clearFeedback } = useOrderStore();
+  const { balances, fetchBalances } = useBalanceStore();
 
+  const [base, quote] = symbol.replace("_", "/").split("/");
+
+  // Form State
   const [side, setSide] = useState<OrderSide>("BUY");
   const [type, setType] = useState<OrderType>("LIMIT");
-  const [price, setPrice] = useState("50000");
-  const [quantity, setQuantity] = useState("0.10");
+  const [price, setPrice] = useState(defaultPrice);
+  const [quantity, setQuantity] = useState("");
 
-  const [base, quote] = symbol.split("/");
-  const cleanSymbol = symbol.replace("/", "_").toUpperCase();
-
-  // Listen to order matches
-  useWebSocketStream(`order:${cleanSymbol}`, (event: any) => {
-    if (event?.type === "ORDER_MATCHED" && onSuccess) {
-      onSuccess();
+  useEffect(() => {
+    if (defaultPrice && !price) {
+      setPrice(defaultPrice);
     }
-  });
+  }, [defaultPrice]);
+
+  useEffect(() => {
+    clearFeedback();
+  }, [symbol, side, type]);
+
+  // Find user balance for base / quote
+  const quoteBalanceObj = balances.find((b) => b.asset?.symbol?.toUpperCase() === (quote || "USDT").toUpperCase());
+  const baseBalanceObj = balances.find((b) => b.asset?.symbol?.toUpperCase() === (base || "BTC").toUpperCase());
+
+  const availableQuote = quoteBalanceObj ? parseFloat(quoteBalanceObj.free) : isDemoMode ? 10000.0 : 0;
+  const availableBase = baseBalanceObj ? parseFloat(baseBalanceObj.free) : isDemoMode ? 0.5 : 0;
+  const relevantBalance = side === "BUY" ? availableQuote : availableBase;
+  const balanceSymbol = side === "BUY" ? (quote || "USDT") : (base || "BTC");
+
+  // Calculate estimated total
+  const priceNum = parseFloat(price) || parseFloat(defaultPrice) || 0;
+  const qtyNum = parseFloat(quantity) || 0;
+  const estTotal = type === "MARKET" ? qtyNum * (parseFloat(defaultPrice) || 0) : qtyNum * priceNum;
 
   const handlePercentage = (pct: number) => {
-    const defaultBase = side === "BUY" ? 0.5 : 1.0;
-    const computed = (defaultBase * (pct / 100)).toFixed(3);
-    setQuantity(computed);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
+
+    if (relevantBalance <= 0) return;
+
+    if (side === "BUY") {
+      const budget = (availableQuote * pct) / 100;
+      const effectivePrice = type === "MARKET" ? parseFloat(defaultPrice) || 1 : priceNum || 1;
+      const calcQty = (budget / effectivePrice).toFixed(4);
+      setQuantity(calcQty);
+    } else {
+      const calcQty = ((availableBase * pct) / 100).toFixed(4);
+      setQuantity(calcQty);
+    }
   };
 
   const handleSubmit = async () => {
     clearFeedback();
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
 
-    if (!isAuthenticated) {
-      router.push("/(auth)/login");
+    if (!quantity || qtyNum <= 0) {
       return;
     }
 
-    const cleanPrice = type === "LIMIT" ? price.trim() : undefined;
-    const cleanQty = quantity.trim();
-
-    if (type === "LIMIT" && (!cleanPrice || parseFloat(cleanPrice) <= 0)) {
-      Alert.alert("Invalid Price", "Please enter a valid positive price.");
-      return;
-    }
-
-    if (!cleanQty || parseFloat(cleanQty) <= 0) {
-      Alert.alert("Invalid Quantity", "Please enter a valid amount.");
-      return;
-    }
-
-    const success = await placeOrder({
+    const payload = {
       marketSymbol: symbol,
       side,
       type,
-      price: cleanPrice,
-      quantity: cleanQty,
-    });
+      price: type === "LIMIT" ? price : undefined,
+      quantity,
+    };
 
-    if (success && onSuccess) {
-      onSuccess();
+    const ok = await placeOrder(payload);
+    if (ok) {
+      try {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
+      setQuantity("");
+      fetchBalances();
+      onSuccess?.();
     }
   };
 
-  const estTotal =
-    type === "LIMIT" && price && quantity
-      ? (parseFloat(price || "0") * parseFloat(quantity || "0")).toFixed(2)
-      : null;
-
   return (
-    <Card style={styles.container}>
-      {/* Header Bar matching Web: Execute Order (0.0% Maker / 0.1% Taker) */}
-      <View style={styles.headerBar}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Zap color={COLORS.electricBlueBright} size={15} />
-          <Text style={styles.headerTitle}>Execute Order</Text>
-        </View>
-        <Text style={styles.feeBadge}>0.0% Maker / 0.1% Taker</Text>
-      </View>
-
-      {/* BUY / SELL Switcher Tabs */}
+    <Card style={styles.card}>
+      {/* 1. Side Switcher (BUY / SELL) */}
       <View style={styles.sideSwitcher}>
         <TouchableOpacity
           style={[styles.sideBtn, side === "BUY" && styles.buyActive]}
           activeOpacity={0.8}
-          onPress={() => {
-            setSide("BUY");
-            clearFeedback();
-          }}
+          onPress={() => setSide("BUY")}
         >
           <Text style={[styles.sideBtnText, side === "BUY" && styles.sideBtnTextActive]}>
-            BUY {base}
+            Buy {base}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.sideBtn, side === "SELL" && styles.sellActive]}
           activeOpacity={0.8}
-          onPress={() => {
-            setSide("SELL");
-            clearFeedback();
-          }}
+          onPress={() => setSide("SELL")}
         >
           <Text style={[styles.sideBtnText, side === "SELL" && styles.sideBtnTextActive]}>
-            SELL {base}
+            Sell {base}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* LIMIT / MARKET Order Type Tabs */}
-      <View style={styles.typeSwitcher}>
-        {(["LIMIT", "MARKET"] as OrderType[]).map((t) => (
-          <TouchableOpacity
-            key={t}
-            style={[styles.typeBtn, type === t && styles.typeBtnActive]}
-            onPress={() => setType(t)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.typeBtnText, type === t && styles.typeBtnTextActive]}>
-              {t}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* 2. Type Selector (LIMIT / MARKET) & Available Balance */}
+      <View style={styles.typeAndBalanceRow}>
+        <View style={styles.typeTabs}>
+          {(["LIMIT", "MARKET"] as OrderType[]).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[styles.typeTab, type === t && styles.typeTabActive]}
+              onPress={() => setType(t)}
+            >
+              <Text style={[styles.typeTabText, type === t && styles.typeTabTextActive]}>
+                {t}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.availBalanceRow}>
+          <Wallet color={COLORS.textMuted} size={12} />
+          <Text style={styles.availBalanceText}>
+            Avail: <Text style={{ color: COLORS.textPrimary, fontWeight: "700" }}>{formatAmount(relevantBalance.toString(), 4)} {balanceSymbol}</Text>
+          </Text>
+        </View>
       </View>
 
       {/* Feedback Banners */}
@@ -164,12 +176,12 @@ export const OrderEntryForm: React.FC<OrderEntryFormProps> = ({
         </View>
       ) : null}
 
-      {/* Price Input (for LIMIT orders) */}
+      {/* 3. Price Input (Only for LIMIT orders) */}
       {type === "LIMIT" ? (
-        <View style={styles.inputGroup}>
-          <View style={styles.inputLabelRow}>
-            <Text style={styles.inputLabel}>PRICE</Text>
-            <Text style={styles.inputCurrency}>{quote}</Text>
+        <View style={styles.inputBlock}>
+          <View style={styles.inputHeader}>
+            <Text style={styles.inputLabel}>ORDER PRICE</Text>
+            <Text style={styles.inputCurrency}>{quote || "USDT"}</Text>
           </View>
           <View style={styles.inputBox}>
             <TextInput
@@ -182,13 +194,18 @@ export const OrderEntryForm: React.FC<OrderEntryFormProps> = ({
             />
           </View>
         </View>
-      ) : null}
+      ) : (
+        <View style={styles.marketPriceNoticeBox}>
+          <Text style={styles.marketPriceNoticeLabel}>ORDER PRICE</Text>
+          <Text style={styles.marketPriceNoticeVal}>Best Market Price (Immediate Fill)</Text>
+        </View>
+      )}
 
-      {/* Amount / Quantity Input */}
-      <View style={styles.inputGroup}>
-        <View style={styles.inputLabelRow}>
+      {/* 4. Quantity / Amount Input */}
+      <View style={styles.inputBlock}>
+        <View style={styles.inputHeader}>
           <Text style={styles.inputLabel}>AMOUNT</Text>
-          <Text style={styles.inputCurrency}>{base}</Text>
+          <Text style={styles.inputCurrency}>{base || "BTC"}</Text>
         </View>
         <View style={styles.inputBox}>
           <TextInput
@@ -196,13 +213,13 @@ export const OrderEntryForm: React.FC<OrderEntryFormProps> = ({
             value={quantity}
             onChangeText={setQuantity}
             keyboardType="decimal-pad"
-            placeholder="0.000"
+            placeholder="0.0000"
             placeholderTextColor={COLORS.textMuted}
           />
         </View>
       </View>
 
-      {/* Quick Percentage Buttons (25%, 50%, 75%, 100%) */}
+      {/* 5. Percentage Slider Quick Buttons (25%, 50%, 75%, 100%) */}
       <View style={styles.pctRow}>
         {[25, 50, 75, 100].map((pct) => (
           <TouchableOpacity
@@ -216,22 +233,26 @@ export const OrderEntryForm: React.FC<OrderEntryFormProps> = ({
         ))}
       </View>
 
-      {/* Estimated Order Total */}
-      {estTotal ? (
-        <View style={styles.estValueRow}>
-          <Text style={styles.estLabel}>Est. order value</Text>
-          <Text style={styles.estVal}>
-            ${`${formatCurrency(estTotal)}`} {quote}
+      {/* 6. Estimated Total & Fee Info */}
+      <View style={styles.summaryBox}>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Est. Order Value</Text>
+          <Text style={styles.summaryVal}>
+            ${formatCurrency(estTotal.toFixed(2))} {quote || "USDT"}
           </Text>
         </View>
-      ) : null}
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Trading Fee</Text>
+          <Text style={styles.summaryFee}>0.10% Taker / 0.0% Maker</Text>
+        </View>
+      </View>
 
-      {/* Submit Button */}
+      {/* 7. Submit Action Button */}
       <Button
         title={
-          isAuthenticated
-            ? `Place ${side} Order →`
-            : "Sign In to Place Live Order"
+          isAuthenticated || isDemoMode
+            ? `Place ${side === "BUY" ? "Buy" : "Sell"} ${type} Order`
+            : "Sign In to Place Order"
         }
         variant={side === "BUY" ? "buy" : "sell"}
         size="lg"
@@ -243,38 +264,24 @@ export const OrderEntryForm: React.FC<OrderEntryFormProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
     padding: SPACING.lg,
     backgroundColor: COLORS.surface,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 20,
     gap: SPACING.md,
-  },
-  headerBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: SPACING.xs,
-  },
-  headerTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
-  },
-  feeBadge: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    fontWeight: "600",
   },
   sideSwitcher: {
     flexDirection: "row",
     backgroundColor: COLORS.surfaceElevated,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.md,
     padding: 3,
     gap: 4,
   },
   sideBtn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.sm,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -287,36 +294,53 @@ const styles = StyleSheet.create({
   sideBtnText: {
     fontSize: 13,
     fontWeight: "800",
-    color: COLORS.textSecondary,
+    color: COLORS.textMuted,
   },
   sideBtnTextActive: {
     color: "#FFFFFF",
   },
-  typeSwitcher: {
+  typeAndBalanceRow: {
     flexDirection: "row",
-    gap: SPACING.md,
-    paddingBottom: 2,
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 2,
   },
-  typeBtn: {
-    paddingBottom: 4,
+  typeTabs: {
+    flexDirection: "row",
+    gap: 8,
   },
-  typeBtnActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.electricBlueBright,
+  typeTab: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
   },
-  typeBtnText: {
-    fontSize: 12,
+  typeTabActive: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.electricBlueBright,
+  },
+  typeTabText: {
+    fontSize: 11.5,
     fontWeight: "700",
     color: COLORS.textMuted,
   },
-  typeBtnTextActive: {
+  typeTabTextActive: {
     color: COLORS.textPrimary,
+  },
+  availBalanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  availBalanceText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
   },
   successBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.xs + 2,
-    backgroundColor: "rgba(14, 203, 129, 0.12)",
+    gap: SPACING.sm,
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
     borderColor: COLORS.buyGreen,
     borderWidth: 1,
     borderRadius: RADIUS.md,
@@ -331,7 +355,7 @@ const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.xs + 2,
+    gap: SPACING.sm,
     backgroundColor: COLORS.sellRedMuted,
     borderColor: COLORS.sellRed,
     borderWidth: 1,
@@ -344,15 +368,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     flex: 1,
   },
-  inputGroup: {
+  inputBlock: {
     gap: 4,
   },
-  inputLabelRow: {
+  inputHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
   },
   inputLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "800",
     color: COLORS.textMuted,
     letterSpacing: 0.5,
@@ -366,16 +390,36 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceElevated,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255, 255, 255, 0.08)",
     paddingHorizontal: SPACING.md,
-    height: 44,
+    height: 46,
     justifyContent: "center",
   },
   textInput: {
     color: COLORS.textPrimary,
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     fontVariant: ["tabular-nums"],
+  },
+  marketPriceNoticeBox: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+    gap: 2,
+  },
+  marketPriceNoticeLabel: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    color: COLORS.textMuted,
+    letterSpacing: 0.5,
+  },
+  marketPriceNoticeVal: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
   },
   pctRow: {
     flexDirection: "row",
@@ -385,30 +429,42 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.surfaceElevated,
     borderRadius: RADIUS.sm,
-    paddingVertical: 6,
+    paddingVertical: 7,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   pctText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: "700",
     color: COLORS.textSecondary,
   },
-  estValueRow: {
+  summaryBox: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.04)",
+  },
+  summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingTop: 2,
   },
-  estLabel: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    fontWeight: "600",
+  summaryLabel: {
+    fontSize: 11.5,
+    color: COLORS.textSecondary,
   },
-  estVal: {
+  summaryVal: {
     fontSize: 12,
     fontWeight: "800",
     color: COLORS.textPrimary,
+    fontVariant: ["tabular-nums"],
+  },
+  summaryFee: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: "600",
   },
 });

@@ -1,263 +1,262 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TextInput,
-  TouchableOpacity,
   RefreshControl,
-  Dimensions,
+  TouchableOpacity,
+  TextInput,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "../../src/constants/theme";
+import { MarketListItem } from "../../src/components/trading/MarketListItem";
+import { CoinAvatar } from "../../src/components/common/CoinAvatar";
+import { Badge } from "../../src/components/common/Badge";
 import { Card } from "../../src/components/common/Card";
 import { Button } from "../../src/components/common/Button";
-import { Badge } from "../../src/components/common/Badge";
-import { CoinAvatar } from "../../src/components/common/CoinAvatar";
-import { Sparkline } from "../../src/components/trading/Sparkline";
-import { MarketListItem } from "../../src/components/trading/MarketListItem";
-import { PriceFlashText } from "../../src/components/common/PriceFlashText";
 import { Skeleton } from "../../src/components/common/Skeleton";
 import { ProfileModal } from "../../src/components/common/ProfileModal";
 import { NotificationsModal } from "../../src/components/common/NotificationsModal";
 import { DepositModal } from "../../src/components/wallet/DepositModal";
-import { useAuthStore } from "../../src/store/authStore";
 import { useMarketStore, MarketCategory } from "../../src/store/marketStore";
+import { useAuthStore } from "../../src/store/authStore";
 import { useBalanceStore } from "../../src/store/balanceStore";
 import { formatCurrency } from "../../src/utils/formatters";
 import * as Haptics from "expo-haptics";
 import {
-  RefreshCw,
-  Plus,
-  Bell,
   Search,
   X,
-  User as UserIcon,
-  LogIn,
+  TrendingUp,
   ArrowRightLeft,
+  ArrowDownLeft,
+  Zap,
+  Bell,
+  User,
+  ShieldCheck,
   Flame,
+  Layers,
+  Eye,
+  EyeOff,
+  Sparkles,
 } from "lucide-react-native";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const FEATURE_CARD_WIDTH = (SCREEN_WIDTH - SPACING.lg * 2 - SPACING.md) / 2;
+const { width } = Dimensions.get("window");
 
-const CATEGORIES: { id: MarketCategory; label: string }[] = [
-  { id: "ALL", label: "All Markets" },
-  { id: "TRADABLE", label: "Tradable on CEX" },
+const CATEGORIES: { key: MarketCategory; label: string }[] = [
+  { key: "ALL", label: "All Markets" },
+  { key: "FAVORITES", label: "Watchlist" },
+  { key: "TRADABLE", label: "Tradable" },
 ];
 
 export default function MarketsScreen() {
   const router = useRouter();
-  const scrollRef = useRef<ScrollView>(null);
-  const searchInputRef = useRef<TextInput>(null);
 
-  const { user, isAuthenticated, isDemoMode } = useAuthStore();
-  const { balances, totalPortfolioUsd, fetchBalances } = useBalanceStore();
-
+  // Stores
   const {
     markets,
     marketStatsMap,
     globalTickers,
     liveTicks,
-    searchQuery,
     selectedCategory,
+    searchQuery,
     isLoading,
     isRefreshing,
     error,
     fetchMarkets,
     refreshMarkets,
-    setSearchQuery,
     setSelectedCategory,
+    setSearchQuery,
     getFilteredMarkets,
+    getHotMovers,
   } = useMarketStore();
 
+  const { user, isDemoMode } = useAuthStore();
+  const { totalPortfolioUsd, fetchBalances } = useBalanceStore();
+
+  // Modal States
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [depositModalVisible, setDepositModalVisible] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isBalanceHidden, setIsBalanceHidden] = useState(false);
 
   useEffect(() => {
     fetchMarkets();
-    if (isAuthenticated) {
-      fetchBalances();
-    }
-  }, [isAuthenticated]);
+    fetchBalances();
+  }, []);
 
-  const filteredMarkets = getFilteredMarkets().filter(
-    (m) => !m.symbol.includes("INR")
-  );
-
-  const displayTotalNumber =
-    isAuthenticated
-      ? totalPortfolioUsd
-      : isDemoMode
-      ? 25076.08
-      : 0.00;
-
-  const formattedBalance = formatCurrency(displayTotalNumber, 2);
-  const [wholePart, decimalPart] = formattedBalance.split(".");
-
-  // Dynamic font size for large balances ($10M+)
-  const wholeFontSize = wholePart.length > 12 ? 26 : wholePart.length > 9 ? 30 : 36;
-
-  const btcLive = liveTicks["BTC/USDT"];
-  const ethLive = liveTicks["ETH/USDT"];
-  const btcTicker = globalTickers["BTC/USDT"];
-  const ethTicker = globalTickers["ETH/USDT"];
-
-  const btcPrice = btcLive?.price || btcTicker?.price || 77446.00;
-  const btcChange = btcLive?.change24h !== undefined ? btcLive.change24h : btcTicker?.change24h;
-
-  const ethPrice = ethLive?.price || ethTicker?.price || 2439.18;
-  const ethChange = ethLive?.change24h !== undefined ? ethLive.change24h : ethTicker?.change24h;
-
-  const triggerHaptic = (style = Haptics.ImpactFeedbackStyle.Light) => {
+  const onRefresh = useCallback(async () => {
     try {
-      Haptics.impactAsync(style);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch {}
-  };
+    await Promise.all([refreshMarkets(), fetchBalances()]);
+  }, []);
 
-  const handleSearchFocus = () => {
-    setIsSearchFocused(true);
-    // Smoothly scroll down so the search bar stays clearly visible above the keyboard
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: 310, animated: true });
-    }, 150);
+  const filteredMarkets = useMemo(() => getFilteredMarkets(), [
+    markets,
+    selectedCategory,
+    searchQuery,
+    liveTicks,
+    globalTickers,
+  ]);
+
+  const hotMovers = useMemo(() => getHotMovers(), [markets, liveTicks, globalTickers]);
+
+  const handleCategorySelect = (cat: MarketCategory) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
+    setSelectedCategory(cat);
   };
 
   const handleClearSearch = () => {
     setSearchQuery("");
-    Keyboard.dismiss();
-    setIsSearchFocused(false);
   };
 
+  // Dynamic greeting
+  const greetingPrefix = useMemo(() => {
+    const hr = new Date().getHours();
+    if (hr < 12) return "Good morning";
+    if (hr < 18) return "Good afternoon";
+    return "Good evening";
+  }, []);
+
+  const totalValNum = totalPortfolioUsd || (isDemoMode ? 10000.0 : 0);
+  const [wholePart, decimalPart] = totalValNum.toFixed(2).split(".");
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          ref={scrollRef}
           contentContainerStyle={styles.container}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={async () => {
-                triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-                await refreshMarkets();
-                if (isAuthenticated) await fetchBalances();
-              }}
-              tintColor={COLORS.electricBlue}
-              colors={[COLORS.electricBlue]}
+              onRefresh={onRefresh}
+              tintColor={COLORS.primary}
+              colors={[COLORS.primary]}
             />
           }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Top App Bar */}
+          {/* 1. Clean Top Bar: Time-of-Day Greeting & Live Feed Status */}
           <View style={styles.topBar}>
             <TouchableOpacity
-              activeOpacity={0.72}
-              onPress={() => {
-                triggerHaptic();
-                setProfileModalVisible(true);
-              }}
+              activeOpacity={0.75}
               style={styles.userProfileBtn}
+              onPress={() => setProfileModalVisible(true)}
             >
               <View style={styles.avatarCircle}>
-                <UserIcon
-                  color={isAuthenticated ? COLORS.buyGreen : isDemoMode ? COLORS.electricBlueBright : COLORS.textMuted}
-                  size={20}
-                />
+                <User color={COLORS.textPrimary} size={18} />
               </View>
               <View>
                 <Text style={styles.greetingText}>
-                  {isAuthenticated && user ? `@${user.username}` : isDemoMode ? "Demo Account" : "Guest Mode"}
+                  {greetingPrefix}, {user?.username ? `@${user.username}` : isDemoMode ? "Demo Trader" : "Lakshay"}
                 </Text>
-                <Text style={styles.profileSubText}>
-                  {isAuthenticated ? "Live Account · Tap to view" : isDemoMode ? "Simulated Demo Mode" : "Tap to Sign In"}
-                </Text>
+                <View style={styles.liveStatusRow}>
+                  <View style={styles.pulsingGreenDot} />
+                  <Text style={styles.liveStatusText}>
+                    {isDemoMode ? "Simulated Sandbox" : "Live Binance Feed"}
+                  </Text>
+                </View>
               </View>
             </TouchableOpacity>
 
             <View style={styles.topRightIcons}>
               <TouchableOpacity
                 style={styles.iconCircle}
-                activeOpacity={0.72}
-                onPress={() => {
-                  triggerHaptic();
-                  setNotifModalVisible(true);
-                }}
+                activeOpacity={0.7}
+                onPress={() => setNotifModalVisible(true)}
               >
-                <Bell color={COLORS.textPrimary} size={18} />
+                <Bell color={COLORS.textPrimary} size={17} />
+                <View style={styles.notifBadgeDot} />
               </TouchableOpacity>
-
-              {!isAuthenticated && !isDemoMode ? (
-                <TouchableOpacity
-                  style={[styles.iconCircle, { backgroundColor: COLORS.electricBlue }]}
-                  activeOpacity={0.72}
-                  onPress={() => {
-                    triggerHaptic();
-                    router.push("/(auth)/login");
-                  }}
-                >
-                  <LogIn color="#FFFFFF" size={16} />
-                </TouchableOpacity>
-              ) : null}
             </View>
           </View>
 
-          {/* Luxury Glassmorphism Portfolio Card with Safe Overflow */}
+          {/* 2. Executive Portfolio Balance Card with Split Typography & Eye Toggle */}
           <Card style={styles.balanceCard}>
             <View style={styles.balanceHeader}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 }}>
-                <Text style={styles.balanceLabel}>
-                  {isAuthenticated ? "Total Net Valuation" : isDemoMode ? "Simulated Demo Balance" : "Wallet Balance"}
-                </Text>
-                <View style={styles.usdtPill}>
-                  <Text style={styles.usdtPillText}>USD</Text>
-                </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={styles.balanceLabel}>TOTAL ASSETS (USD)</Text>
+                <TouchableOpacity
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={() => {
+                    try {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    } catch {}
+                    setIsBalanceHidden(!isBalanceHidden);
+                  }}
+                  activeOpacity={0.7}
+                  style={styles.eyeBtn}
+                >
+                  {isBalanceHidden ? (
+                    <EyeOff color={COLORS.textMuted} size={15} />
+                  ) : (
+                    <Eye color={COLORS.textSecondary} size={15} />
+                  )}
+                </TouchableOpacity>
+
                 {isDemoMode ? (
                   <View style={styles.demoBadge}>
                     <Text style={styles.demoBadgeText}>DEMO</Text>
                   </View>
                 ) : null}
               </View>
-              <Badge change={displayTotalNumber > 0 ? "+0.00%" : "0.00%"} />
+              <View style={styles.pnlPill}>
+                <TrendingUp color={COLORS.buyGreen} size={13} />
+                <Text style={styles.pnlText}>+$342.80 (+4.12%)</Text>
+              </View>
             </View>
 
-            <View style={styles.balanceAmountRow}>
-              <Text style={styles.currencySign}>$</Text>
-              <Text
-                style={[styles.balanceWhole, { fontSize: wholeFontSize }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {wholePart}
-              </Text>
-              <Text style={styles.balanceDecimals}>.{decimalPart || "00"}</Text>
-            </View>
+            {/* Split Integer + Decimal Typography with Overflow Protection */}
+            {isBalanceHidden ? (
+              <View style={styles.hiddenBalanceRow}>
+                <Text style={styles.hiddenBalanceText}>$ ••••••••</Text>
+              </View>
+            ) : (
+              <View style={styles.balanceAmountRow}>
+                <Text style={styles.currencySign}>$</Text>
+                <Text
+                  style={[
+                    styles.balanceWhole,
+                    wholePart.length > 9 && { fontSize: 24 },
+                    wholePart.length > 13 && { fontSize: 20 },
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {formatCurrency(wholePart).replace("$", "")}
+                </Text>
+                <Text
+                  style={[
+                    styles.balanceDecimals,
+                    wholePart.length > 9 && { fontSize: 16 },
+                  ]}
+                >
+                  .{decimalPart || "00"}
+                </Text>
+              </View>
+            )}
 
-            {/* Action Buttons: Deposit, Swap, Trade */}
+            {/* Quick Action Matrix */}
             <View style={styles.actionsRow}>
               <TouchableOpacity
                 style={styles.actionItem}
                 activeOpacity={0.75}
-                onPress={() => {
-                  triggerHaptic();
-                  if (!isAuthenticated && !isDemoMode) router.push("/(auth)/login");
-                  else setDepositModalVisible(true);
-                }}
+                onPress={() => setDepositModalVisible(true)}
               >
                 <View style={styles.actionCircle}>
-                  <Plus color={COLORS.textPrimary} size={20} />
+                  <ArrowDownLeft color={COLORS.textPrimary} size={20} />
                 </View>
                 <Text style={styles.actionLabel}>Deposit</Text>
               </TouchableOpacity>
@@ -265,13 +264,10 @@ export default function MarketsScreen() {
               <TouchableOpacity
                 style={styles.actionItem}
                 activeOpacity={0.75}
-                onPress={() => {
-                  triggerHaptic();
-                  router.push("/(tabs)/swap");
-                }}
+                onPress={() => router.push("/(tabs)/swap")}
               >
                 <View style={styles.actionCircle}>
-                  <ArrowRightLeft color={COLORS.electricBlueBright} size={20} />
+                  <ArrowRightLeft color={COLORS.electricBlue} size={20} />
                 </View>
                 <Text style={styles.actionLabel}>Swap</Text>
               </TouchableOpacity>
@@ -279,121 +275,95 @@ export default function MarketsScreen() {
               <TouchableOpacity
                 style={styles.actionItem}
                 activeOpacity={0.75}
-                onPress={() => {
-                  triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-                  router.push("/(tabs)/trade");
-                }}
+                onPress={() => router.push("/(tabs)/trade")}
               >
-                <View style={[styles.actionCircle, styles.actionCircleTrade, SHADOWS.glowBlue]}>
-                  <RefreshCw color="#FFFFFF" size={20} />
+                <View style={[styles.actionCircle, styles.actionCircleTrade]}>
+                  <Zap color="#FFFFFF" size={20} />
                 </View>
-                <Text
-                  style={[styles.actionLabel, { color: COLORS.electricBlueBright, fontWeight: "700" }]}
-                >
+                <Text style={[styles.actionLabel, { color: COLORS.textPrimary, fontWeight: "800" }]}>
                   Trade
                 </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionItem}
+                activeOpacity={0.75}
+                onPress={() => router.push("/(tabs)/wallet")}
+              >
+                <View style={styles.actionCircle}>
+                  <Layers color={COLORS.textPrimary} size={20} />
+                </View>
+                <Text style={styles.actionLabel}>Portfolio</Text>
               </TouchableOpacity>
             </View>
           </Card>
 
-          {/* Featured Markets Header */}
-          <View style={styles.sectionHeader}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Flame color="#F97316" size={18} />
-              <Text style={styles.sectionTitle}>Featured Highlights</Text>
+          {/* 3. 24h Hot Movers Carousel */}
+          <View style={styles.sectionWrap}>
+            <View style={styles.sectionHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Flame color="#FF7A00" size={18} />
+                <Text style={styles.sectionTitle}>24h Hot Movers</Text>
+              </View>
+              <View style={styles.liveStreamBadge}>
+                <View style={styles.pulsingDot} />
+                <Text style={styles.liveIndicatorText}>LIVE FEED</Text>
+              </View>
             </View>
-            <View style={styles.liveStreamBadge}>
-              <View style={styles.pulsingDot} />
-              <Text style={styles.liveIndicatorText}>Live Stream</Text>
-            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.hotMoversScroll}
+            >
+              {hotMovers.map((m) => {
+                const tick = liveTicks[m.symbol] || globalTickers[m.symbol];
+                const price = tick?.price || 0;
+                const change = tick?.change24h || 0;
+                const isPos = change >= 0;
+                const cleanSym = m.symbol.replace("/", "_");
+
+                return (
+                  <TouchableOpacity
+                    key={`mover-${m.id}`}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      try {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      } catch {}
+                      router.push(`/market/${cleanSym}`);
+                    }}
+                  >
+                    <Card style={styles.hotMoverCard}>
+                      <View style={styles.hotMoverTop}>
+                        <CoinAvatar symbol={m.baseAsset?.symbol || "BTC"} size={26} />
+                        <Badge change={`${isPos ? "+" : ""}${change.toFixed(2)}%`} />
+                      </View>
+                      <Text style={styles.hotMoverSymbol}>{m.baseAsset?.symbol}</Text>
+                      <Text style={styles.hotMoverPrice}>
+                        ${price > 0 ? (price < 1 ? price.toFixed(4) : price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : "---"}
+                      </Text>
+                    </Card>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
 
-          {/* Real Live Highlight Cards Grid: BTC & ETH */}
-          <View style={styles.featureRow}>
-            {/* BTC Card */}
-            <TouchableOpacity
-              style={{ width: FEATURE_CARD_WIDTH }}
-              activeOpacity={0.75}
-              onPress={() => {
-                triggerHaptic();
-                router.push("/market/BTC_USDT");
-              }}
-            >
-              <Card style={[styles.miniFeatureCard, { borderColor: "rgba(59, 130, 246, 0.25)" }]}>
-                <View style={styles.miniCardTop}>
-                  <CoinAvatar symbol="BTC" size={32} />
-                  <Badge
-                    change={
-                      btcChange !== undefined
-                        ? `${btcChange >= 0 ? "+" : ""}${btcChange.toFixed(2)}%`
-                        : "+0.00%"
-                    }
-                  />
-                </View>
-                <PriceFlashText price={btcPrice} style={styles.miniPrice} />
-                <Text style={styles.miniSymbol}>BTC / USDT</Text>
-                <View style={{ marginTop: SPACING.sm, alignItems: "center" }}>
-                  <Sparkline
-                    data={btcTicker?.sparkline}
-                    isPositive={(btcChange || 0) >= 0}
-                    width={FEATURE_CARD_WIDTH - 32}
-                    height={36}
-                    color={COLORS.electricBlueBright}
-                  />
-                </View>
-              </Card>
-            </TouchableOpacity>
-
-            {/* ETH Card */}
-            <TouchableOpacity
-              style={{ width: FEATURE_CARD_WIDTH }}
-              activeOpacity={0.75}
-              onPress={() => {
-                triggerHaptic();
-                router.push("/market/ETH_USDT");
-              }}
-            >
-              <Card style={[styles.miniFeatureCard, { borderColor: "rgba(139, 92, 246, 0.25)" }]}>
-                <View style={styles.miniCardTop}>
-                  <CoinAvatar symbol="ETH" size={32} />
-                  <Badge
-                    change={
-                      ethChange !== undefined
-                        ? `${ethChange >= 0 ? "+" : ""}${ethChange.toFixed(2)}%`
-                        : "+0.00%"
-                    }
-                  />
-                </View>
-                <PriceFlashText price={ethPrice} style={styles.miniPrice} />
-                <Text style={styles.miniSymbol}>ETH / USDT</Text>
-                <View style={{ marginTop: SPACING.sm, alignItems: "center" }}>
-                  <Sparkline
-                    data={ethTicker?.sparkline}
-                    isPositive={(ethChange || 0) >= 0}
-                    width={FEATURE_CARD_WIDTH - 32}
-                    height={36}
-                    color={COLORS.radiantPurple}
-                  />
-                </View>
-              </Card>
-            </TouchableOpacity>
-          </View>
-
-          {/* Search Bar - Fixed Font Padding & Auto-Scroll on Keyboard */}
+          {/* 4. Search Bar */}
           <View style={[styles.searchContainer, isSearchFocused && styles.searchContainerActive]}>
-            <Search color={isSearchFocused ? COLORS.electricBlueBright : COLORS.textMuted} size={18} />
+            <Search color={isSearchFocused ? COLORS.primary : COLORS.textMuted} size={18} />
             <TextInput
-              ref={searchInputRef}
-              placeholder="Search coin or pair (e.g. BTC, ETH, SOL)..."
+              style={styles.searchInput}
+              placeholder="Search coin, symbol, or network..."
               placeholderTextColor={COLORS.textMuted}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              onFocus={handleSearchFocus}
+              onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setIsSearchFocused(false)}
-              style={styles.searchInput}
+              autoCorrect={false}
               autoCapitalize="none"
               returnKeyType="search"
-              onSubmitEditing={() => Keyboard.dismiss()}
             />
             {searchQuery ? (
               <TouchableOpacity onPress={handleClearSearch} style={styles.clearSearchBtn}>
@@ -402,40 +372,33 @@ export default function MarketsScreen() {
             ) : null}
           </View>
 
-          {/* 2 Clear Category Filter Pills */}
-          <View style={styles.categoryRow}>
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.categoryPill,
-                  selectedCategory === cat.id && styles.categoryPillActive,
-                ]}
-                onPress={() => {
-                  triggerHaptic();
-                  setSelectedCategory(cat.id);
-                }}
-                activeOpacity={0.75}
-              >
-                <Text
-                  style={[
-                    styles.categoryText,
-                    selectedCategory === cat.id && styles.categoryTextActive,
-                  ]}
+          {/* 5. Compressed 3-Tab Segmented Control (Fixed Width, No Scroll) */}
+          <View style={styles.segmentedTabsWrap}>
+            {CATEGORIES.map((cat) => {
+              const isActive = selectedCategory === cat.key;
+              return (
+                <TouchableOpacity
+                  key={cat.key}
+                  style={[styles.segmentTab, isActive && styles.segmentTabActive]}
+                  onPress={() => handleCategorySelect(cat.key)}
+                  activeOpacity={0.75}
                 >
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={[styles.segmentTabText, isActive && styles.segmentTabTextActive]}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Live Markets List */}
+          {/* 6. Market Pairs List */}
           <View style={styles.marketList}>
             {isLoading && markets.length === 0 ? (
               <View style={{ gap: SPACING.md }}>
-                <Skeleton height={68} borderRadius={RADIUS.xl} />
-                <Skeleton height={68} borderRadius={RADIUS.xl} />
-                <Skeleton height={68} borderRadius={RADIUS.xl} />
+                <Skeleton height={70} borderRadius={RADIUS.lg} />
+                <Skeleton height={70} borderRadius={RADIUS.lg} />
+                <Skeleton height={70} borderRadius={RADIUS.lg} />
+                <Skeleton height={70} borderRadius={RADIUS.lg} />
               </View>
             ) : error && markets.length === 0 ? (
               <Card style={styles.errorCard}>
@@ -444,8 +407,15 @@ export default function MarketsScreen() {
               </Card>
             ) : filteredMarkets.length === 0 ? (
               <Card style={styles.emptyCard}>
-                <Text style={styles.emptyTitle}>No matching markets found</Text>
-                <Text style={styles.emptySub}>Try searching for BTC, ETH, SOL, or DOGE</Text>
+                <Sparkles color={COLORS.textMuted} size={32} />
+                <Text style={styles.emptyTitle}>
+                  {selectedCategory === "FAVORITES" ? "No Watchlist Favorites Yet" : "No matching markets found"}
+                </Text>
+                <Text style={styles.emptySub}>
+                  {selectedCategory === "FAVORITES"
+                    ? "Tap the star icon next to any coin to pin it to your watchlist."
+                    : "Try searching for BTC, ETH, SOL, or DOGE"}
+                </Text>
                 {searchQuery ? (
                   <Button
                     title="Clear Search"
@@ -497,8 +467,8 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: 120,
+    paddingTop: SPACING.sm,
+    paddingBottom: 110,
     gap: SPACING.lg,
   },
   topBar: {
@@ -512,45 +482,95 @@ const styles = StyleSheet.create({
     gap: SPACING.sm + 2,
   },
   avatarCircle: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "rgba(0, 0, 0, 0.08)",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   greetingText: {
     fontSize: 15,
     fontWeight: "900",
     color: COLORS.textPrimary,
   },
-  profileSubText: {
-    fontSize: 11.5,
-    color: COLORS.textSecondary,
+  liveStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     marginTop: 1,
+  },
+  pulsingGreenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: "#10B981",
+  },
+  liveStatusText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: "600",
   },
   topRightIcons: {
     flexDirection: "row",
     gap: SPACING.sm,
   },
   iconCircle: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(0, 0, 0, 0.06)",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  notifBadgeDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 7,
+    height: 7,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.sellRed,
   },
   balanceCard: {
     padding: SPACING.xl,
-    backgroundColor: COLORS.surface,
-    borderColor: "rgba(59, 130, 246, 0.22)",
-    gap: SPACING.lg,
-    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(0, 0, 0, 0.06)",
+    borderRadius: 24,
+    gap: SPACING.md,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  eyeBtn: {
+    padding: 2,
+    marginLeft: 2,
+  },
+  hiddenBalanceRow: {
+    paddingVertical: 4,
+  },
+  hiddenBalanceText: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: COLORS.textPrimary,
+    letterSpacing: 2,
   },
   balanceHeader: {
     flexDirection: "row",
@@ -558,26 +578,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   balanceLabel: {
-    fontSize: 12.5,
-    fontWeight: "700",
+    fontSize: 11.5,
+    fontWeight: "800",
     color: COLORS.textSecondary,
-    letterSpacing: 0.2,
+    letterSpacing: 0.5,
   },
   demoBadge: {
-    backgroundColor: "rgba(59, 130, 246, 0.18)",
+    backgroundColor: "rgba(37, 99, 235, 0.1)",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: RADIUS.sm,
+    borderRadius: RADIUS.xs,
   },
   demoBadgeText: {
-    color: COLORS.electricBlueBright,
-    fontSize: 10,
+    color: COLORS.electricBlue,
+    fontSize: 9.5,
+    fontWeight: "800",
+  },
+  pnlPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  pnlText: {
+    color: COLORS.buyGreen,
+    fontSize: 11.5,
     fontWeight: "800",
   },
   balanceAmountRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    flexWrap: "nowrap",
   },
   currencySign: {
     fontSize: 22,
@@ -586,54 +619,49 @@ const styles = StyleSheet.create({
     marginRight: 2,
   },
   balanceWhole: {
+    fontSize: 34,
     fontWeight: "900",
     color: COLORS.textPrimary,
     letterSpacing: -1,
-    flexShrink: 1,
+    fontVariant: ["tabular-nums"],
   },
   balanceDecimals: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     color: COLORS.textSecondary,
-  },
-  usdtPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: RADIUS.xs,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-  usdtPillText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: COLORS.textMuted,
+    fontVariant: ["tabular-nums"],
   },
   actionsRow: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "space-between",
     paddingTop: SPACING.xs,
   },
   actionItem: {
     alignItems: "center",
-    gap: SPACING.xs + 2,
+    gap: 6,
+    flex: 1,
   },
   actionCircle: {
-    width: 52,
-    height: 52,
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(0, 0, 0, 0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
   actionCircleTrade: {
-    backgroundColor: COLORS.electricBlue,
-    borderColor: COLORS.electricBlueBright,
+    backgroundColor: "#111827",
+    borderColor: "#111827",
   },
   actionLabel: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 11.5,
+    fontWeight: "700",
     color: COLORS.textSecondary,
+  },
+  sectionWrap: {
+    gap: SPACING.sm,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -641,16 +669,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: "900",
+    fontSize: 15.5,
+    fontWeight: "800",
     color: COLORS.textPrimary,
   },
   liveStreamBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
-    paddingHorizontal: 8,
+    backgroundColor: "rgba(16, 185, 129, 0.1)",
+    paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
   },
@@ -661,94 +689,113 @@ const styles = StyleSheet.create({
     backgroundColor: "#10B981",
   },
   liveIndicatorText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
     color: COLORS.buyGreen,
   },
-  featureRow: {
-    flexDirection: "row",
-    gap: SPACING.md,
+  hotMoversScroll: {
+    gap: SPACING.sm,
+    paddingRight: SPACING.md,
   },
-  miniFeatureCard: {
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
+  hotMoverCard: {
+    width: 124,
+    padding: 12,
+    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(0, 0, 0, 0.06)",
+    borderRadius: 18,
+    gap: 6,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  miniCardTop: {
+  hotMoverTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: SPACING.sm,
   },
-  miniPrice: {
-    fontSize: 16,
-    fontWeight: "900",
+  hotMoverSymbol: {
+    fontSize: 13,
+    fontWeight: "800",
     color: COLORS.textPrimary,
-    fontVariant: ["tabular-nums"],
-  },
-  miniSymbol: {
-    fontSize: 11.5,
-    color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  hotMoverPrice: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+    fontVariant: ["tabular-nums"],
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
+    backgroundColor: "#FFFFFF",
+    borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(0, 0, 0, 0.06)",
     paddingHorizontal: SPACING.md,
-    height: 48,
+    height: 46,
     gap: SPACING.sm,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
   },
   searchContainerActive: {
-    borderColor: COLORS.electricBlueBright,
-    backgroundColor: COLORS.surfaceElevated,
+    borderColor: "#111827",
   },
   searchInput: {
     flex: 1,
     color: COLORS.textPrimary,
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: "600",
-    paddingVertical: 0,
-    textAlignVertical: "center",
-    includeFontPadding: false,
   },
   clearSearchBtn: {
     padding: 4,
   },
-  categoryRow: {
+  segmentedTabsWrap: {
     flexDirection: "row",
-    gap: SPACING.sm,
-  },
-  categoryPill: {
-    flex: 1,
-    paddingVertical: 10,
+    backgroundColor: "#FFFFFF",
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surface,
+    padding: 4,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.07)",
+    borderColor: "rgba(0, 0, 0, 0.06)",
+    gap: 4,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  segmentTab: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: RADIUS.full,
     alignItems: "center",
+    justifyContent: "center",
   },
-  categoryPillActive: {
-    backgroundColor: COLORS.electricBlue,
-    borderColor: COLORS.electricBlueBright,
+  segmentTabActive: {
+    backgroundColor: "#111827",
   },
-  categoryText: {
-    fontSize: 13,
+  segmentTabText: {
+    fontSize: 12.5,
     fontWeight: "700",
-    color: COLORS.textSecondary,
+    color: COLORS.textMuted,
   },
-  categoryTextActive: {
+  segmentTabTextActive: {
     color: "#FFFFFF",
+    fontWeight: "800",
   },
   marketList: {
-    gap: SPACING.md,
+    gap: SPACING.sm + 2,
   },
   errorCard: {
     borderColor: COLORS.sellRed,
     backgroundColor: COLORS.sellRedMuted,
     gap: SPACING.md,
+    padding: SPACING.lg,
   },
   errorText: {
     color: COLORS.sellRed,
@@ -756,7 +803,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   emptyCard: {
-    padding: SPACING.xl,
+    padding: SPACING.xxl,
     alignItems: "center",
     gap: SPACING.xs,
   },
@@ -764,9 +811,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     color: COLORS.textPrimary,
+    marginTop: SPACING.xs,
   },
   emptySub: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 18,
   },
 });

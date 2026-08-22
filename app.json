@@ -5,13 +5,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0052FF",
+        "backgroundColor": "#EDF1F7",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -45,7 +45,14 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0052FF"
-    }
+      "backgroundColor": "#EDF1F7"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a05571a9-add9-4004-9405-7509a3c293c2"
+      }
+    },
+    "owner": "lkshay"
   }
 }

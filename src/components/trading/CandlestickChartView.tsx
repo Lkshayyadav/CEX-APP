@@ -449,7 +449,7 @@ export const CandlestickChartView: React.FC<CandlestickChartProps> = ({ symbol }
     <View style={styles.container}>
       <View style={styles.headerBar}>
         <View style={styles.titleRow}>
-          <View style={[styles.iconCircle, { backgroundColor: "#F97316" }]}>
+          <View style={[styles.iconCircle, { backgroundColor: "#111827" }]}>
             <BarChart2 color="#FFFFFF" size={13} />
           </View>
           <View>
@@ -525,7 +525,7 @@ export const CandlestickChartView: React.FC<CandlestickChartProps> = ({ symbol }
           <View style={styles.fullscreenModalContent}>
             <View style={styles.modalHeaderRow}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <BarChart2 color="#F97316" size={18} />
+                <BarChart2 color="#111827" size={18} />
                 <Text style={styles.modalTitle}>{symbol} Fullscreen Chart</Text>
               </View>
 
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
@@ -700,7 +700,7 @@ const styles = StyleSheet.create({
   },
   timeframePills: {
     flexDirection: "row",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderRadius: RADIUS.sm,
     padding: 2,
     gap: 2,
@@ -713,7 +713,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.sm,
   },
   tfBtnActive: {
-    backgroundColor: "#F97316",
+    backgroundColor: "#111827",
   },
   tfBtnText: {
     fontSize: 10.5,
@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderRadius: RADIUS.sm,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -750,15 +750,15 @@ const styles = StyleSheet.create({
   },
   fullscreenModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "center",
     padding: SPACING.md,
   },
   fullscreenModalContent: {
-    backgroundColor: "#111728",
+    backgroundColor: "#FFFFFF",
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.borderBlue,
+    borderColor: "rgba(0, 0, 0, 0.08)",
     padding: SPACING.md,
     height: SCREEN_HEIGHT * 0.74,
     gap: SPACING.sm,
@@ -780,7 +780,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
   },

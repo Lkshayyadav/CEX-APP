@@ -16,9 +16,13 @@ export const getErrorMessage = (error: unknown, fallback = "An unexpected error 
     return axiosError.response.data.message;
   }
 
+  if (axiosError.code === "ECONNABORTED" || axiosError.message?.includes("timeout")) {
+    return "Server is waking up (Render free tier). Please try again in 5 seconds.";
+  }
+
   if (axiosError.message) {
     if (axiosError.message.includes("Network Error")) {
-      return "Unable to connect to CEX servers. Check your internet connection.";
+      return "Server connecting... Please tap once more to proceed.";
     }
     return axiosError.message;
   }

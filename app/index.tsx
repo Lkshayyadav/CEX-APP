@@ -5,7 +5,7 @@ import { useAuthStore } from "../src/store/authStore";
 
 export default function SplashScreen() {
   const router = useRouter();
-  const { hydrate, isHydrating } = useAuthStore();
+  const { hydrate, isAuthenticated, token } = useAuthStore();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.92)).current;
 
@@ -28,7 +28,12 @@ export default function SplashScreen() {
     const checkInit = async () => {
       await hydrate();
       setTimeout(() => {
-        router.replace("/(tabs)");
+        const state = useAuthStore.getState();
+        if (state.isAuthenticated && state.token) {
+          router.replace("/(tabs)");
+        } else {
+          router.replace("/welcome");
+        }
       }, 900);
     };
 

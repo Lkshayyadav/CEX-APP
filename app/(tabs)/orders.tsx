@@ -14,13 +14,14 @@ import { COLORS, RADIUS, SPACING } from "../../src/constants/theme";
 import { Card } from "../../src/components/common/Card";
 import { Button } from "../../src/components/common/Button";
 import { OrderCard } from "../../src/components/trading/OrderCard";
+import { AuthRequiredGate } from "../../src/components/common/AuthRequiredGate";
 import { useAuthStore } from "../../src/store/authStore";
 import { useOrderStore } from "../../src/store/orderStore";
-import { FileText, ArrowRight, Lock, Clock, CheckCircle2 } from "lucide-react-native";
+import { FileText, ArrowRight, Lock } from "lucide-react-native";
 
 export default function OrdersTabScreen() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isDemoMode } = useAuthStore();
   const { orders, isLoading, fetchOrders } = useOrderStore();
 
   const [activeTab, setActiveTab] = useState<"OPEN" | "HISTORY">("OPEN");
@@ -50,7 +51,7 @@ export default function OrdersTabScreen() {
   const currentList = activeTab === "OPEN" ? openOrders : historyOrders;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
@@ -58,8 +59,8 @@ export default function OrdersTabScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={onRefresh}
-            tintColor={COLORS.electricBlue}
-            colors={[COLORS.electricBlue]}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
           />
         }
       >
@@ -92,36 +93,24 @@ export default function OrdersTabScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Guest Warning Card */}
-        {!isAuthenticated ? (
-          <Card elevated style={styles.authNoticeCard}>
-            <View style={styles.noticeIconBox}>
-              <Lock color={COLORS.electricBlueBright} size={22} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Sign in to view live order history</Text>
-              <Text style={styles.noticeSub}>Track active limit orders and fills in real time</Text>
-            </View>
-            <Button
-              title="Sign In"
-              size="sm"
-              variant="primary"
-              onPress={() => router.push("/(auth)/login")}
-            />
-          </Card>
+        {!isAuthenticated && !isDemoMode ? (
+          <AuthRequiredGate
+            title="Sign In to View Orders"
+            description="Sign in or register an account to view your active open orders, partial fills, and historical trade logs."
+          />
         ) : null}
 
         {/* Loading Spinner */}
         {isLoading && orders.length === 0 ? (
           <View style={styles.centerBox}>
-            <ActivityIndicator color={COLORS.electricBlue} size="large" />
+            <ActivityIndicator color={COLORS.primary} size="large" />
             <Text style={styles.loadingText}>Syncing order queue...</Text>
           </View>
         ) : currentList.length === 0 ? (
           /* Empty State */
           <Card style={styles.emptyCard}>
             <View style={styles.emptyIconBox}>
-              <FileText color={COLORS.textSecondary} size={32} />
+              <FileText color={COLORS.textMuted} size={32} />
             </View>
             <Text style={styles.emptyTitle}>
               {activeTab === "OPEN" ? "No Active Open Orders" : "No Past Trade Executions"}
@@ -136,7 +125,7 @@ export default function OrdersTabScreen() {
               size="md"
               variant="primary"
               style={{ marginTop: SPACING.md }}
-              icon={<ArrowRight color="#080A11" size={16} />}
+              icon={<ArrowRight color="#FFFFFF" size={16} />}
               onPress={() => router.push("/(tabs)/trade")}
             />
           </Card>
@@ -165,58 +154,63 @@ const styles = StyleSheet.create({
   },
   header: {
     marginTop: SPACING.xs,
-    gap: SPACING.xs,
+    gap: 2,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
     color: COLORS.textPrimary,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.textSecondary,
   },
   tabSwitcher: {
     flexDirection: "row",
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xs,
+    backgroundColor: "#FFFFFF",
+    borderRadius: RADIUS.full,
+    padding: 3,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(0, 0, 0, 0.06)",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.full,
   },
   tabBtnActive: {
-    backgroundColor: COLORS.surfaceElevated,
-    borderColor: COLORS.borderLight,
-    borderWidth: 1,
+    backgroundColor: "#111827",
   },
   tabBtnText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: COLORS.textMuted,
   },
   tabBtnTextActive: {
-    color: COLORS.textPrimary,
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
   authNoticeCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.surfaceElevated,
-    borderColor: COLORS.borderBlue,
+    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(0, 0, 0, 0.06)",
+    borderRadius: 20,
   },
   noticeIconBox: {
     width: 40,
     height: 40,
     borderRadius: RADIUS.md,
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    backgroundColor: "rgba(37, 99, 235, 0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -243,24 +237,26 @@ const styles = StyleSheet.create({
     padding: SPACING.xxxl,
     alignItems: "center",
     gap: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    borderColor: "rgba(0, 0, 0, 0.06)",
   },
   emptyIconBox: {
     width: 64,
     height: 64,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: SPACING.sm,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
     color: COLORS.textPrimary,
   },
   emptyDesc: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: COLORS.textSecondary,
     textAlign: "center",
     lineHeight: 18,

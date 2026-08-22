@@ -37,9 +37,7 @@ export const Button: React.FC<ButtonProps> = ({
     if (disabled || loading) return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {
-      // Haptics optional fallback
-    }
+    } catch {}
     onPress();
   };
 
@@ -106,25 +104,25 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: SPACING.sm,
   },
   primary: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: "#111827",
   },
   buy: {
-    backgroundColor: COLORS.buyGreen,
+    backgroundColor: "#10B981",
   },
   sell: {
-    backgroundColor: COLORS.sellRed,
+    backgroundColor: "#EF4444",
   },
   outline: {
-    backgroundColor: "transparent",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: COLORS.primary,
+    borderColor: "rgba(0, 0, 0, 0.12)",
   },
   ghost: {
     backgroundColor: COLORS.surfaceElevated,
@@ -141,19 +139,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   sizeLg: {
-    paddingVertical: 18,
+    paddingVertical: 16,
     paddingHorizontal: SPACING.xxl,
   },
   textBase: {
-    fontWeight: "700",
+    fontWeight: "800",
     fontSize: 14,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   textSolid: {
-    color: "#0B0E14",
+    color: "#FFFFFF",
   },
   textOutline: {
-    color: COLORS.primary,
+    color: "#111827",
   },
   textGhost: {
     color: COLORS.textPrimary,

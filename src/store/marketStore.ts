@@ -3,8 +3,9 @@ import { Market, MarketStats } from "../types";
 import { marketApi } from "../api/market.api";
 import { globalPriceApi, GlobalMarketTicker, PAIR_CONFIG } from "../api/globalPrice.api";
 import { getErrorMessage } from "../utils/errorHandler";
+import { storage } from "../utils/storage";
 
-export type MarketCategory = "ALL" | "TRADABLE";
+export type MarketCategory = "ALL" | "FAVORITES" | "GAINERS" | "LOSERS" | "LAYER1" | "DEFI" | "TRADABLE";
 
 export interface BinanceTick {
   symbol: string; // "BTC/USDT"
@@ -18,144 +19,43 @@ export interface BinanceTick {
   openPrice: number;
 }
 
-const INITIAL_MARKETS: Market[] = [
-  {
-    id: "m-btc",
-    symbol: "BTC/USDT",
-    baseAssetId: "a-btc",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-btc", symbol: "BTC", name: "Bitcoin", decimals: 8, isActive: true },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "0.0001",
-    maxOrderSize: "100.0",
-    tickSize: "0.01",
-    stepSize: "0.0001",
+const FAVORITES_STORAGE_KEY = "cex_user_favorite_markets";
+
+const INITIAL_MARKETS: Market[] = Object.entries(PAIR_CONFIG).map(([sym, meta]) => ({
+  id: `m-${meta.base.toLowerCase()}`,
+  symbol: sym,
+  baseAssetId: `a-${meta.base.toLowerCase()}`,
+  quoteAssetId: "a-usdt",
+  baseAsset: {
+    id: `a-${meta.base.toLowerCase()}`,
+    symbol: meta.base,
+    name: meta.name,
+    decimals: 8,
     isActive: true,
   },
-  {
-    id: "m-eth",
-    symbol: "ETH/USDT",
-    baseAssetId: "a-eth",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-eth", symbol: "ETH", name: "Ethereum", decimals: 8, isActive: true },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "0.001",
-    maxOrderSize: "1000.0",
-    tickSize: "0.01",
-    stepSize: "0.001",
+  quoteAsset: {
+    id: "a-usdt",
+    symbol: "USDT",
+    name: "Tether USD",
+    decimals: 6,
     isActive: true,
   },
-  {
-    id: "m-sol",
-    symbol: "SOL/USDT",
-    baseAssetId: "a-sol",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-sol", symbol: "SOL", name: "Solana", decimals: 9, isActive: true },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "0.01",
-    maxOrderSize: "5000.0",
-    tickSize: "0.01",
-    stepSize: "0.01",
-    isActive: true,
-  },
-  {
-    id: "m-bnb",
-    symbol: "BNB/USDT",
-    baseAssetId: "a-bnb",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-bnb", symbol: "BNB", name: "BNB", decimals: 8, isActive: false },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "0.01",
-    maxOrderSize: "1000.0",
-    tickSize: "0.01",
-    stepSize: "0.01",
-    isActive: false,
-  },
-  {
-    id: "m-xrp",
-    symbol: "XRP/USDT",
-    baseAssetId: "a-xrp",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-xrp", symbol: "XRP", name: "XRP", decimals: 6, isActive: false },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "1.0",
-    maxOrderSize: "100000.0",
-    tickSize: "0.0001",
-    stepSize: "1.0",
-    isActive: false,
-  },
-  {
-    id: "m-doge",
-    symbol: "DOGE/USDT",
-    baseAssetId: "a-doge",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-doge", symbol: "DOGE", name: "Dogecoin", decimals: 8, isActive: false },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "10.0",
-    maxOrderSize: "1000000.0",
-    tickSize: "0.00001",
-    stepSize: "1.0",
-    isActive: false,
-  },
-  {
-    id: "m-ada",
-    symbol: "ADA/USDT",
-    baseAssetId: "a-ada",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-ada", symbol: "ADA", name: "Cardano", decimals: 6, isActive: false },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "1.0",
-    maxOrderSize: "100000.0",
-    tickSize: "0.0001",
-    stepSize: "1.0",
-    isActive: false,
-  },
-  {
-    id: "m-avax",
-    symbol: "AVAX/USDT",
-    baseAssetId: "a-avax",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-avax", symbol: "AVAX", name: "Avalanche", decimals: 8, isActive: false },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "0.1",
-    maxOrderSize: "5000.0",
-    tickSize: "0.01",
-    stepSize: "0.1",
-    isActive: false,
-  },
-  {
-    id: "m-link",
-    symbol: "LINK/USDT",
-    baseAssetId: "a-link",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-link", symbol: "LINK", name: "Chainlink", decimals: 8, isActive: false },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "0.1",
-    maxOrderSize: "5000.0",
-    tickSize: "0.01",
-    stepSize: "0.1",
-    isActive: false,
-  },
-  {
-    id: "m-sui",
-    symbol: "SUI/USDT",
-    baseAssetId: "a-sui",
-    quoteAssetId: "a-usdt",
-    baseAsset: { id: "a-sui", symbol: "SUI", name: "Sui", decimals: 8, isActive: false },
-    quoteAsset: { id: "a-usdt", symbol: "USDT", name: "Tether USD", decimals: 6, isActive: true },
-    minOrderSize: "1.0",
-    maxOrderSize: "50000.0",
-    tickSize: "0.0001",
-    stepSize: "1.0",
-    isActive: false,
-  },
-];
+  minOrderSize: "0.001",
+  maxOrderSize: "1000000.0",
+  tickSize: "0.01",
+  stepSize: "0.001",
+  isActive: meta.isTradable,
+}));
+
+const LAYER1_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "ADA/USDT", "AVAX/USDT", "DOT/USDT", "NEAR/USDT", "APT/USDT", "ATOM/USDT"];
+const DEFI_SYMBOLS = ["UNI/USDT", "LINK/USDT", "ARB/USDT", "OP/USDT", "POL/USDT"];
 
 interface MarketState {
   markets: Market[];
   marketStatsMap: Record<string, MarketStats>;
   globalTickers: Record<string, GlobalMarketTicker>;
   liveTicks: Record<string, BinanceTick>;
+  favorites: string[];
   selectedCategory: MarketCategory;
   searchQuery: string;
   isLoading: boolean;
@@ -163,6 +63,9 @@ interface MarketState {
   error: string | null;
 
   initBinanceSocket: () => void;
+  loadFavorites: () => Promise<void>;
+  toggleFavorite: (symbol: string) => Promise<void>;
+  isFavorite: (symbol: string) => boolean;
   fetchMarkets: () => Promise<void>;
   refreshMarkets: () => Promise<void>;
   fetchStatsForMarket: (symbol: string) => Promise<void>;
@@ -171,6 +74,7 @@ interface MarketState {
   setSelectedCategory: (category: MarketCategory) => void;
   setSearchQuery: (query: string) => void;
   getFilteredMarkets: () => Market[];
+  getHotMovers: () => Market[];
 }
 
 let binanceWs: WebSocket | null = null;
@@ -182,6 +86,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   marketStatsMap: {},
   globalTickers: {},
   liveTicks: {},
+  favorites: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
   selectedCategory: "ALL",
   searchQuery: "",
   isLoading: false,
@@ -193,7 +98,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       return;
     }
 
-    // Set up a 500ms batch flush loop so JS thread is NEVER overloaded by 100 ticks/sec
     if (!batchFlushTimer) {
       batchFlushTimer = setInterval(() => {
         if (Object.keys(pendingTickBuffer).length > 0) {
@@ -206,7 +110,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             },
           }));
         }
-      }, 500);
+      }, 400);
     }
 
     try {
@@ -235,7 +139,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             const prevClose = parseFloat(data.x) || 0;
             const openPrice = parseFloat(data.o) || 0;
 
-            // Buffer the tick instead of calling set() 100x per second!
             pendingTickBuffer[symKey] = {
               symbol: symKey,
               price,
@@ -262,6 +165,32 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     } catch {}
   },
 
+  loadFavorites: async () => {
+    try {
+      const stored = await storage.getItem(FAVORITES_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          set({ favorites: parsed });
+        }
+      }
+    } catch {}
+  },
+
+  toggleFavorite: async (symbol: string) => {
+    const { favorites } = get();
+    const isFav = favorites.includes(symbol);
+    const updated = isFav ? favorites.filter((s) => s !== symbol) : [...favorites, symbol];
+    set({ favorites: updated });
+    try {
+      await storage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+  },
+
+  isFavorite: (symbol: string) => {
+    return get().favorites.includes(symbol);
+  },
+
   fetchGlobalTickers: async () => {
     try {
       const tickers = await globalPriceApi.fetchLiveMarketTickers();
@@ -276,6 +205,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   fetchMarkets: async () => {
     set({ isLoading: true, error: null });
     get().initBinanceSocket();
+    get().loadFavorites();
 
     try {
       await Promise.all([get().fetchAllStats(), get().fetchGlobalTickers()]);
@@ -305,9 +235,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       set((state) => ({
         marketStatsMap: { ...state.marketStatsMap, [symbol]: stats },
       }));
-    } catch (err) {
-      // Non-tradable pairs might not have match engine stats
-    }
+    } catch (err) {}
   },
 
   fetchAllStats: async () => {
@@ -325,10 +253,19 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     set({ searchQuery: query });
   },
 
-  getFilteredMarkets: () => {
-    const { markets, selectedCategory, searchQuery } = get();
+  getHotMovers: () => {
+    const { markets, liveTicks, globalTickers } = get();
+    return [...markets].sort((a, b) => {
+      const changeA = Math.abs(liveTicks[a.symbol]?.change24h ?? globalTickers[a.symbol]?.change24h ?? 0);
+      const changeB = Math.abs(liveTicks[b.symbol]?.change24h ?? globalTickers[b.symbol]?.change24h ?? 0);
+      return changeB - changeA;
+    }).slice(0, 6);
+  },
 
-    return markets.filter((market) => {
+  getFilteredMarkets: () => {
+    const { markets, selectedCategory, searchQuery, favorites, liveTicks, globalTickers } = get();
+
+    let list = markets.filter((market) => {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesSym = market.symbol.toLowerCase().includes(q);
@@ -339,11 +276,36 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         }
       }
 
+      if (selectedCategory === "FAVORITES") {
+        return favorites.includes(market.symbol);
+      }
+      if (selectedCategory === "LAYER1") {
+        return LAYER1_SYMBOLS.includes(market.symbol);
+      }
+      if (selectedCategory === "DEFI") {
+        return DEFI_SYMBOLS.includes(market.symbol);
+      }
       if (selectedCategory === "TRADABLE") {
         return market.isActive === true;
       }
 
       return true;
     });
+
+    if (selectedCategory === "GAINERS") {
+      list = [...list].sort((a, b) => {
+        const cA = liveTicks[a.symbol]?.change24h ?? globalTickers[a.symbol]?.change24h ?? 0;
+        const cB = liveTicks[b.symbol]?.change24h ?? globalTickers[b.symbol]?.change24h ?? 0;
+        return cB - cA;
+      });
+    } else if (selectedCategory === "LOSERS") {
+      list = [...list].sort((a, b) => {
+        const cA = liveTicks[a.symbol]?.change24h ?? globalTickers[a.symbol]?.change24h ?? 0;
+        const cB = liveTicks[b.symbol]?.change24h ?? globalTickers[b.symbol]?.change24h ?? 0;
+        return cA - cB;
+      });
+    }
+
+    return list;
   },
 }));

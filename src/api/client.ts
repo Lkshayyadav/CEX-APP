@@ -4,7 +4,7 @@ import { storage } from "../utils/storage";
 
 export const api = axios.create({
   baseURL: APP_CONFIG.apiUrl,
-  timeout: 15000,
+  timeout: 45000, // 45 seconds to accommodate Render free-tier cold-start wake-up
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -23,13 +23,22 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Handle global 401 unauthenticated states gracefully
+// Response Interceptor: Auto-retry on cold-start timeouts and handle 401
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const config = error.config;
+    
+    // Auto-retry once on network timeout/cold-start (status 0 or ECONNABORTED)
+    if (config && !config._retry && (error.code === "ECONNABORTED" || !error.response)) {
+      config._retry = true;
+      config.timeout = 50000;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return api(config);
+    }
+
     if (error.response?.status === 401) {
       console.warn("[API] 401 Unauthorized - Session expired or invalid token.");
-      // In Phase 3 AuthStore, we will hook an automatic clean logout listener here
     }
     return Promise.reject(error);
   }

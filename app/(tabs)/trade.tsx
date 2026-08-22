@@ -6,60 +6,51 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS, RADIUS, SPACING } from "../../src/constants/theme";
 import { Card } from "../../src/components/common/Card";
-import { Badge } from "../../src/components/common/Badge";
 import { CoinAvatar } from "../../src/components/common/CoinAvatar";
-import { ConnectionStatusBadge } from "../../src/components/common/ConnectionStatusBadge";
-import { CandlestickChartView } from "../../src/components/trading/CandlestickChartView";
 import { OrderBookView } from "../../src/components/trading/OrderBookView";
-import { OrderEntryForm } from "../../src/components/trading/OrderEntryForm";
 import { RecentTradesView } from "../../src/components/trading/RecentTradesView";
+import { CandlestickChartView } from "../../src/components/trading/CandlestickChartView";
+import { OrderEntryForm } from "../../src/components/trading/OrderEntryForm";
 import { OrderCard } from "../../src/components/trading/OrderCard";
+import { AuthRequiredGate } from "../../src/components/common/AuthRequiredGate";
+import { useAuthStore } from "../../src/store/authStore";
 import { useMarketStore } from "../../src/store/marketStore";
 import { useOrderStore } from "../../src/store/orderStore";
-import { useAuthStore } from "../../src/store/authStore";
-import { useWebSocketStream } from "../../src/hooks/useWebSocket";
 import { formatCurrency } from "../../src/utils/formatters";
+import * as Haptics from "expo-haptics";
 import {
   ChevronDown,
-  BarChart2,
-  BookOpen,
-  Clock,
+  TrendingUp,
+  TrendingDown,
   Check,
   X,
+  BookOpen,
+  Clock,
+  BarChart2,
   FileText,
-  Activity,
-  Zap,
 } from "lucide-react-native";
 
-// ONLY THE 3 REAL MARKETS FROM WEB (No fake INR)
 const AVAILABLE_PAIRS = [
-  { symbol: "BTC/USDT", name: "Bitcoin", base: "BTC", quote: "USDT" },
-  { symbol: "ETH/USDT", name: "Ethereum", base: "ETH", quote: "USDT" },
-  { symbol: "SOL/USDT", name: "Solana", base: "SOL", quote: "USDT" },
+  { symbol: "BTC/USDT", base: "BTC", name: "Bitcoin" },
+  { symbol: "ETH/USDT", base: "ETH", name: "Ethereum" },
+  { symbol: "SOL/USDT", base: "SOL", name: "Solana" },
 ];
 
-export default function TradeTabScreen() {
+export default function TradeScreen() {
   const [selectedPair, setSelectedPair] = useState(AVAILABLE_PAIRS[0]);
   const [panelMode, setPanelMode] = useState<"CHART" | "ORDERBOOK" | "TRADES">("CHART");
   const [pairModalVisible, setPairModalVisible] = useState(false);
-  const [livePrice, setLivePrice] = useState<string>("$---");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const { isAuthenticated, isDemoMode } = useAuthStore();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { marketStatsMap, fetchStatsForMarket } = useMarketStore();
+  const { liveTicks, globalTickers, marketStatsMap, fetchStatsForMarket } = useMarketStore();
   const { orders, fetchOrders } = useOrderStore();
-  const { isAuthenticated } = useAuthStore();
-
-  const cleanSymbol = selectedPair.symbol.replace("/", "_").toUpperCase();
-  const currentStats = marketStatsMap[selectedPair.symbol];
-
-  const handleRefresh = () => {
-    setRefreshTrigger((prev) => prev + 1);
-    if (isAuthenticated) fetchOrders();
-  };
 
   useEffect(() => {
     fetchStatsForMarket(selectedPair.symbol);
@@ -68,32 +59,67 @@ export default function TradeTabScreen() {
     }
   }, [selectedPair.symbol, isAuthenticated]);
 
-  useWebSocketStream(`trade:${cleanSymbol}`, (payload: any) => {
-    if (payload?.trades && payload.trades.length > 0) {
-      const latest = payload.trades[0];
-      if (latest?.price) {
-        setLivePrice(`$${formatCurrency(latest.price)}`);
-      }
+  const handleRefresh = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
+    setIsRefreshing(true);
+    setRefreshTrigger((prev) => prev + 1);
+    await fetchStatsForMarket(selectedPair.symbol);
+    if (isAuthenticated) {
+      await fetchOrders();
     }
-  });
+    setIsRefreshing(false);
+  };
+
+  const currentStats = marketStatsMap[selectedPair.symbol];
+  const liveTick = liveTicks[selectedPair.symbol];
+  const globalTicker = globalTickers[selectedPair.symbol];
+
+  const livePriceNum =
+    liveTick?.price ||
+    globalTicker?.price ||
+    (currentStats?.lastPrice ? parseFloat(currentStats.lastPrice) : 50000.0);
+
+  const livePrice = `$${formatCurrency(livePriceNum.toFixed(2))}`;
+
+  const changePct =
+    liveTick?.change24h !== undefined
+      ? liveTick.change24h
+      : globalTicker?.change24h !== undefined
+      ? globalTicker.change24h
+      : 0;
+
+  const isPositive = changePct >= 0;
 
   const openOrders = orders.filter(
     (o) =>
-      (o.market?.symbol === selectedPair.symbol || !o.market) &&
-      (o.status === "OPEN" || o.status === "PARTIALLY_FILLED" || o.status === "PENDING")
+      (o.status === "OPEN" || o.status === "PARTIALLY_FILLED") &&
+      (!o.market?.symbol || o.market?.symbol === selectedPair.symbol)
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Top Header & Pair Dropdown */}
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
+      >
+        {/* Header: Market Pair Selector & Current Price */}
         <View style={styles.headerRow}>
           <TouchableOpacity
             style={styles.pairDropdown}
             activeOpacity={0.75}
             onPress={() => setPairModalVisible(true)}
           >
-            <CoinAvatar symbol={selectedPair.base} size={36} />
+            <CoinAvatar symbol={selectedPair.base} size={32} />
             <View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                 <Text style={styles.pairTitle}>{selectedPair.symbol}</Text>
@@ -103,59 +129,17 @@ export default function TradeTabScreen() {
             </View>
           </TouchableOpacity>
 
-          <View style={{ alignItems: "flex-end", gap: 4 }}>
-            <ConnectionStatusBadge />
-            <Badge change={currentStats?.change || "+0.00%"} />
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={styles.livePriceText}>{livePrice}</Text>
+            <View style={[styles.badgePill, isPositive ? styles.badgePos : styles.badgeNeg]}>
+              <Text style={[styles.badgeText, isPositive ? styles.badgeTextPos : styles.badgeTextNeg]}>
+                {isPositive ? "▲ +" : "▼ "}{Math.abs(changePct).toFixed(2)}%
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* 24h Ticker Statistics Bar matching Web Screenshot #1 */}
-        <Card style={styles.statsBar}>
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>24H CHANGE</Text>
-            <Text
-              style={[
-                styles.statVal,
-                {
-                  color: (currentStats?.change || "+").startsWith("+")
-                    ? COLORS.buyGreen
-                    : COLORS.sellRed,
-                },
-              ]}
-            >
-              {currentStats?.change || "+0.00%"}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>24H HIGH</Text>
-            <Text style={styles.statVal}>
-              {currentStats?.high ? `$${formatCurrency(currentStats.high)}` : "$---"}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>24H LOW</Text>
-            <Text style={styles.statVal}>
-              {currentStats?.low ? `$${formatCurrency(currentStats.low)}` : "$---"}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>24H VOL ({selectedPair.base})</Text>
-            <Text style={styles.statVal}>
-              {currentStats?.volume ? parseFloat(currentStats.volume).toFixed(1) : "---"}
-            </Text>
-          </View>
-        </Card>
-
-        {/* Latency Tag */}
-        <View style={styles.latencyRow}>
-          <Zap color={COLORS.buyGreen} size={13} />
-          <Text style={styles.latencyText}>Matching Latency: &lt; 0.4ms</Text>
-        </View>
-
-        {/* View Switcher: Candles Chart vs Live Order Book vs Recent Trades */}
+        {/* View Mode Switcher: Chart vs OrderBook vs Trades */}
         <View style={styles.viewModeSwitcher}>
           <TouchableOpacity
             style={[styles.viewModeBtn, panelMode === "CHART" && styles.viewModeBtnActive]}
@@ -164,7 +148,7 @@ export default function TradeTabScreen() {
           >
             <BarChart2 color={panelMode === "CHART" ? "#FFFFFF" : COLORS.textMuted} size={15} />
             <Text style={[styles.viewModeText, panelMode === "CHART" && styles.viewModeTextActive]}>
-              TradingView Chart
+              Chart
             </Text>
           </TouchableOpacity>
 
@@ -175,7 +159,7 @@ export default function TradeTabScreen() {
           >
             <BookOpen color={panelMode === "ORDERBOOK" ? "#FFFFFF" : COLORS.textMuted} size={15} />
             <Text style={[styles.viewModeText, panelMode === "ORDERBOOK" && styles.viewModeTextActive]}>
-              Live Order Book
+              Order Book
             </Text>
           </TouchableOpacity>
 
@@ -191,33 +175,40 @@ export default function TradeTabScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Active Panel (Chart / OrderBook / Trades) */}
-        <Card style={styles.panelCard}>
-          {panelMode === "CHART" ? (
-            <CandlestickChartView symbol={selectedPair.symbol} />
-          ) : panelMode === "ORDERBOOK" ? (
+        {/* Chart / OrderBook / Trades Panel */}
+        {panelMode === "CHART" ? (
+          <CandlestickChartView symbol={selectedPair.symbol} />
+        ) : panelMode === "ORDERBOOK" ? (
+          <Card style={styles.panelCard}>
             <OrderBookView
               symbol={selectedPair.symbol}
               currentPrice={livePrice}
               refreshTrigger={refreshTrigger}
             />
-          ) : (
+          </Card>
+        ) : (
+          <Card style={styles.panelCard}>
             <RecentTradesView symbol={selectedPair.symbol} refreshTrigger={refreshTrigger} />
-          )}
-        </Card>
+          </Card>
+        )}
 
-        {/* Live Order Placement Ticket (Submits to POST /orders) */}
-        <OrderEntryForm
-          symbol={selectedPair.symbol}
-          defaultPrice={currentStats?.lastPrice || "50000"}
-          onSuccess={handleRefresh}
-        />
+        {/* Order Placement Form or Auth Gate */}
+        {!isAuthenticated && !isDemoMode ? (
+          <AuthRequiredGate
+            title="Sign In to Trade Spot"
+            description="Sign in or register an account to place limit and market orders on the live matching engine."
+          />
+        ) : (
+          <OrderEntryForm
+            symbol={selectedPair.symbol}
+            defaultPrice={`${livePriceNum}`}
+            onSuccess={handleRefresh}
+          />
+        )}
 
-        {/* Live Open Orders Section */}
+        {/* Open Orders Section */}
         <View style={styles.openOrdersHeader}>
-          <Text style={styles.openOrdersTitle}>
-            Open Orders ({openOrders.length})
-          </Text>
+          <Text style={styles.openOrdersTitle}>Open Orders ({openOrders.length})</Text>
         </View>
 
         {openOrders.length === 0 ? (
@@ -291,7 +282,7 @@ const styles = StyleSheet.create({
   pairDropdown: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.md,
+    gap: SPACING.sm + 2,
   },
   pairTitle: {
     fontSize: 18,
@@ -302,51 +293,47 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
   },
-  statsBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
-  },
-  statCol: {
-    alignItems: "center",
-  },
-  statLabel: {
-    fontSize: 9.5,
-    color: COLORS.textMuted,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-  },
-  statVal: {
-    fontSize: 12,
-    fontWeight: "800",
+  livePriceText: {
+    fontSize: 18,
+    fontWeight: "900",
     color: COLORS.textPrimary,
-    marginTop: 2,
     fontVariant: ["tabular-nums"],
   },
-  statDivider: {
-    width: 1,
-    backgroundColor: COLORS.border,
+  badgePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    marginTop: 2,
   },
-  latencyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: -8,
+  badgePos: {
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
   },
-  latencyText: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    fontWeight: "600",
+  badgeNeg: {
+    backgroundColor: "rgba(239, 68, 68, 0.10)",
+  },
+  badgeText: {
+    fontSize: 10.5,
+    fontWeight: "800",
+  },
+  badgeTextPos: {
+    color: COLORS.buyGreen,
+  },
+  badgeTextNeg: {
+    color: COLORS.sellRed,
   },
   viewModeSwitcher: {
     flexDirection: "row",
-    backgroundColor: COLORS.surface,
+    backgroundColor: "#FFFFFF",
     borderRadius: RADIUS.full,
-    padding: 4,
+    padding: 3,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(0, 0, 0, 0.06)",
     gap: 4,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
   },
   viewModeBtn: {
     flex: 1,
@@ -354,29 +341,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 8,
-    paddingHorizontal: 6,
     borderRadius: RADIUS.full,
     gap: 5,
   },
   viewModeBtnActive: {
-    backgroundColor: COLORS.surfaceHighlight,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)",
+    backgroundColor: "#111827",
   },
   viewModeText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: "700",
     color: COLORS.textMuted,
   },
   viewModeTextActive: {
-    color: COLORS.textPrimary,
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
   panelCard: {
     padding: SPACING.md,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(0, 0, 0, 0.06)",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
   },
   openOrdersHeader: {
     marginTop: SPACING.xs,
@@ -390,7 +380,8 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
     alignItems: "center",
     gap: SPACING.xs,
-    backgroundColor: COLORS.surface,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
   },
   emptyOrdersText: {
     fontSize: 12,
@@ -398,15 +389,15 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "flex-end",
   },
   modalContainer: {
-    backgroundColor: "#111728",
+    backgroundColor: "#FFFFFF",
     borderTopLeftRadius: RADIUS.xxl,
     borderTopRightRadius: RADIUS.xxl,
     borderWidth: 1,
-    borderColor: COLORS.borderBlue,
+    borderColor: "rgba(0, 0, 0, 0.08)",
     padding: SPACING.xl,
     paddingBottom: 40,
     gap: SPACING.md,
@@ -437,13 +428,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(0, 0, 0, 0.06)",
   },
   pairRowActive: {
-    borderColor: COLORS.electricBlueBright,
-    backgroundColor: "rgba(59, 130, 246, 0.12)",
+    borderColor: "#111827",
+    backgroundColor: "#F1F5F9",
   },
   pairRowTitle: {
     fontSize: 15,

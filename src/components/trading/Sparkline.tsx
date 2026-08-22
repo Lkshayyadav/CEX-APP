@@ -1,6 +1,6 @@
 import React from "react";
 import { View } from "react-native";
-import Svg, { Path, Defs, LinearGradient, Stop } from "react-native-svg";
+import Svg, { Path, Defs, LinearGradient, Stop, Circle } from "react-native-svg";
 import { COLORS } from "../../constants/theme";
 
 interface SparklineProps {
@@ -8,74 +8,86 @@ interface SparklineProps {
   isPositive?: boolean;
   width?: number;
   height?: number;
-  color?: string;
-  showGradient?: boolean;
+  showEndpoint?: boolean;
+  strokeWidth?: number;
 }
 
 export const Sparkline: React.FC<SparklineProps> = ({
   data,
   isPositive = true,
-  width = 90,
-  height = 32,
-  color,
-  showGradient = true,
+  width = 300,
+  height = 50,
+  showEndpoint = true,
+  strokeWidth = 2.4,
 }) => {
-  const lineColor = color || (isPositive ? COLORS.buyGreen : COLORS.sellRed);
-  const gradientId = `grad-${isPositive ? "green" : "red"}-${Math.floor(Math.random() * 1000)}`;
+  // Smooth natural points matching the interior chart style
+  const defaultPoints = isPositive
+    ? [100, 103, 101, 107, 105, 111, 109, 116, 114, 120]
+    : [120, 117, 118, 112, 114, 108, 110, 104, 106, 100];
 
-  // Real data normalization or clean baseline
-  const points =
-    data && data.length >= 2
-      ? data
-      : isPositive
-      ? [10, 12, 11, 14, 13, 16, 18]
-      : [18, 16, 17, 14, 15, 12, 10];
+  const points = data && data.length >= 4 ? data : defaultPoints;
 
   const min = Math.min(...points);
   const max = Math.max(...points);
   const range = max - min || 1;
 
-  const paddingY = 4;
-  const plotHeight = height - paddingY * 2;
+  const padY = 6;
+  const usableH = height - padY * 2;
+  const stepX = width / (points.length - 1);
 
-  // Build SVG path
-  const coordinates = points.map((val, idx) => {
-    const x = (idx / (points.length - 1)) * width;
-    const y = height - paddingY - ((val - min) / range) * plotHeight;
+  const coords = points.map((val, idx) => {
+    const x = idx * stepX;
+    const y = padY + usableH - ((val - min) / range) * usableH;
     return { x, y };
   });
 
-  // Smooth bezier curve generator
-  let pathD = `M ${coordinates[0].x} ${coordinates[0].y}`;
-  for (let i = 0; i < coordinates.length - 1; i++) {
-    const p0 = coordinates[i];
-    const p1 = coordinates[i + 1];
-    const midX = (p0.x + p1.x) / 2;
-    pathD += ` Q ${p0.x} ${p0.y}, ${midX} ${(p0.y + p1.y) / 2} T ${p1.x} ${p1.y}`;
+  // Build cubic Bezier curve path
+  let pathD = `M ${coords[0].x} ${coords[0].y}`;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const curr = coords[i];
+    const next = coords[i + 1];
+    const cpX1 = curr.x + (next.x - curr.x) / 2;
+    const cpY1 = curr.y;
+    const cpX2 = curr.x + (next.x - curr.x) / 2;
+    const cpY2 = next.y;
+    pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${next.x} ${next.y}`;
   }
 
-  const closedPathD = `${pathD} L ${width} ${height} L 0 ${height} Z`;
+  const fillD = `${pathD} L ${width} ${height} L 0 ${height} Z`;
+  const lastPt = coords[coords.length - 1];
+
+  const fillGradId = `sparkFill_${Math.random().toString(36).substring(2, 9)}`;
+  const strokeColor = isPositive ? "#10B981" : "#EF4444";
 
   return (
-    <View style={{ width, height, overflow: "hidden" }}>
-      <Svg width={width} height={height}>
+    <View style={{ width, height, overflow: "visible" }}>
+      <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
         <Defs>
-          <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={lineColor} stopOpacity="0.35" />
-            <Stop offset="100%" stopColor={lineColor} stopOpacity="0.0" />
+          <LinearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor={strokeColor} stopOpacity="0.18" />
+            <Stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
           </LinearGradient>
         </Defs>
 
-        {showGradient ? <Path d={closedPathD} fill={`url(#${gradientId})`} /> : null}
+        {/* Soft Area Gradient Fill under curve */}
+        <Path d={fillD} fill={`url(#${fillGradId})`} />
 
+        {/* Smooth Curve Stroke */}
         <Path
           d={pathD}
           fill="none"
-          stroke={lineColor}
-          strokeWidth="2"
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
+
+        {showEndpoint ? (
+          <>
+            <Circle cx={lastPt.x} cy={lastPt.y} r={3.5} fill={strokeColor} />
+            <Circle cx={lastPt.x} cy={lastPt.y} r={6} stroke={strokeColor} strokeWidth={1.5} fill="none" opacity={0.35} />
+          </>
+        ) : null}
       </Svg>
     </View>
   );

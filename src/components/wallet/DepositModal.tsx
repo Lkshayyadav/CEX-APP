@@ -9,12 +9,13 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
-import { COLORS, RADIUS, SPACING, SHADOWS } from "../../constants/theme";
+import { COLORS, RADIUS, SPACING } from "../../constants/theme";
 import { Button } from "../common/Button";
-import { Card } from "../common/Card";
 import { CoinAvatar } from "../common/CoinAvatar";
 import { useBalanceStore } from "../../store/balanceStore";
-import { X, CheckCircle2, AlertCircle, Plus, Zap } from "lucide-react-native";
+import { useAuthStore } from "../../store/authStore";
+import * as Haptics from "expo-haptics";
+import { X, CheckCircle2, AlertCircle, Zap } from "lucide-react-native";
 
 interface DepositModalProps {
   visible: boolean;
@@ -22,31 +23,36 @@ interface DepositModalProps {
 }
 
 const DEPOSIT_ASSETS = [
-  { symbol: "USDT", name: "Tether USD", defaultAmt: "1000.00" },
-  { symbol: "BTC", name: "Bitcoin", defaultAmt: "0.1000" },
-  { symbol: "ETH", name: "Ethereum", defaultAmt: "1.0000" },
-  { symbol: "SOL", name: "Solana", defaultAmt: "10.0000" },
+  { symbol: "USDT", defaultAmt: "1000" },
+  { symbol: "BTC", defaultAmt: "0.5" },
+  { symbol: "ETH", defaultAmt: "2.0" },
+  { symbol: "SOL", defaultAmt: "10.0" },
 ];
 
 const QUICK_AMOUNTS: Record<string, string[]> = {
-  USDT: ["100", "500", "1000", "5000"],
-  BTC: ["0.01", "0.05", "0.1", "0.5"],
-  ETH: ["0.1", "0.5", "1.0", "5.0"],
-  SOL: ["1", "5", "10", "50"],
+  USDT: ["500", "1000", "5000", "10000"],
+  BTC: ["0.1", "0.5", "1.0", "2.0"],
+  ETH: ["0.5", "1.0", "2.0", "5.0"],
+  SOL: ["2.0", "5.0", "10.0", "25.0"],
 };
 
 export const DepositModal: React.FC<DepositModalProps> = ({ visible, onClose }) => {
-  const { depositFunds, isDepositing, error, depositSuccess, clearDepositStatus } =
-    useBalanceStore();
+  const { depositFunds, isDepositing, error, depositSuccess, clearDepositStatus } = useBalanceStore();
+  const { isDemoMode } = useAuthStore();
 
   const [selectedAsset, setSelectedAsset] = useState("USDT");
-  const [amount, setAmount] = useState("1000.00");
+  const [amount, setAmount] = useState("1000");
 
   const handleDeposit = async () => {
     if (!amount || parseFloat(amount) <= 0) return;
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+
     const success = await depositFunds({
       assetSymbol: selectedAsset,
-      amount: amount.trim(),
+      amount,
     });
 
     if (success) {
@@ -177,15 +183,15 @@ export const DepositModal: React.FC<DepositModalProps> = ({ visible, onClose }) 
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "flex-end",
   },
   modalContainer: {
-    backgroundColor: "#111728",
+    backgroundColor: "#FFFFFF",
     borderTopLeftRadius: RADIUS.xxl,
     borderTopRightRadius: RADIUS.xxl,
     borderWidth: 1,
-    borderColor: COLORS.borderBlue,
+    borderColor: "rgba(0, 0, 0, 0.08)",
     padding: SPACING.xl,
     paddingBottom: 40,
     gap: SPACING.md,
@@ -200,7 +206,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.full,
-    backgroundColor: "#F97316",
+    backgroundColor: "#FF7A00",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -217,7 +223,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -225,7 +231,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
-    backgroundColor: "rgba(14, 203, 129, 0.12)",
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
     borderColor: COLORS.buyGreen,
     borderWidth: 1,
     borderRadius: RADIUS.md,
@@ -270,15 +276,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderRadius: RADIUS.md,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(0, 0, 0, 0.06)",
   },
   assetPillActive: {
-    backgroundColor: COLORS.electricBlue,
-    borderColor: COLORS.electricBlueBright,
+    backgroundColor: "#111827",
+    borderColor: "#111827",
   },
   assetText: {
     fontSize: 12,
@@ -291,10 +297,10 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(0, 0, 0, 0.08)",
     paddingHorizontal: SPACING.md,
     height: 48,
   },
@@ -308,7 +314,7 @@ const styles = StyleSheet.create({
   currencyBadge: {
     fontSize: 12,
     fontWeight: "800",
-    color: COLORS.electricBlueBright,
+    color: COLORS.electricBlue,
   },
   quickAmountsRow: {
     flexDirection: "row",
@@ -316,17 +322,17 @@ const styles = StyleSheet.create({
   },
   quickAmtBtn: {
     flex: 1,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderRadius: RADIUS.sm,
     paddingVertical: 7,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(0, 0, 0, 0.06)",
   },
   quickAmtBtnActive: {
     borderColor: COLORS.buyGreen,
-    backgroundColor: "rgba(14, 203, 129, 0.12)",
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
   },
   quickAmtText: {
     fontSize: 11,
